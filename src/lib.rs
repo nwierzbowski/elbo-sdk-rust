@@ -1,85 +1,134 @@
 use pyo3::prelude::*;
-use shared_memory::{Shmem, ShmemConf};
+mod engine_client;
+mod engine_api; // This line remains unchanged
 
-struct ShmemWrapper(shared_memory::Shmem);
-
-unsafe impl Send for ShmemWrapper {}
-unsafe impl Sync for ShmemWrapper {}
-
-// 1. Define the Python Class
-#[pyclass]
-struct ElboClient {
-    // We keep the shared memory handle alive here so it doesn't close
-    // "Box" is like std::unique_ptr in C++ (Heap allocation)
-    shmem: Box<ShmemWrapper>,
-}
-
-// 2. Define the Methods
-#[pymethods]
-impl ElboClient {
-    // The Constructor (__init__)
-    #[new]
-    fn new(shm_name: String, size: usize) -> PyResult<Self> {
-        // Try to create the shared memory
-        let shmem = match ShmemConf::new().size(size).os_id(&shm_name).create() {
-            Ok(m) => m,
-            Err(shared_memory::ShmemError::LinkExists) => {
-                // If it exists, open it instead.
-                // We use map_err to convert the specific Shmem error to a generic string for Python
-                ShmemConf::new().os_id(&shm_name).open().map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
-                })?
-            }
-            Err(e) => {
-                // Convert Rust error to Python RuntimeError
-                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-            }
-        };
-
-        Ok(ElboClient { 
-            shmem: Box::new(ShmemWrapper(shmem))
-        })
-    }
-
-    // A method to write data (Simulating your live-link)
-    // Takes a Python list of floats
-    fn send_data(&mut self, data: Vec<f32>) -> PyResult<usize> {
-        let ptr = self.shmem.0.as_ptr();
-        let len = data.len();
-        
-        // UNSAFE BLOCK: Required for raw pointer manipulation
-        unsafe {
-            // Cast the raw byte pointer to a float pointer
-            let float_ptr = ptr as *mut f32;
-            
-            // Check bounds (Rust safety!)
-            // shmem.len() is in bytes, so we divide by 4 (sizeof f32)
-            if len * 4 > self.shmem.0.len() {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Data too large for SHM"));
-            }
-
-            // Copy data from the Vec to the shared memory
-            std::ptr::copy_nonoverlapping(data.as_ptr(), float_ptr, len);
-        }
-
-        Ok(len)
-    }
-    
-    // A simple getter to prove it works
-    fn read_first_float(&self) -> PyResult<f32> {
-        let ptr = self.shmem.0.as_ptr();
-        unsafe {
-            let float_ptr = ptr as *const f32;
-            Ok(*float_ptr)
-        }
-    }
-}
-
-// 3. The Module Entry Point
-// UPDATED for PyO3 0.21+ (Bound API)
 #[pymodule]
-fn elbo_sdk_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Add the class to the module
-    m.add_class::<ElboClient>()?;
-    Ok(())
+mod elbo_sdk_rust {
+    use pyo3::prelude::*;
+
+    // Engine-related functions in a submodule
+    #[pymodule]
+    mod engine {
+        use pyo3::prelude::*;
+        use crate::engine_api::RUNTIME;
+
+        // Helper function to abstract the common async pattern
+        fn run_async<T, E, F>(future: F) -> PyResult<T>
+        where
+            F: std::future::Future<Output = Result<T, E>> + Send + 'static,
+            T: Send,
+            E: std::fmt::Display + Send,
+        {
+            // Run the future in the detached runtime
+            let result = Python::attach(|py: Python| py.detach(|| RUNTIME.block_on(future)))
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            Ok(result)
+        }
+
+        #[pyfunction]
+        fn start_engine(path: String) -> PyResult<()> {
+            run_async(crate::engine_api::start_engine(path))
+        }
+
+        #[pyfunction]
+        fn stop_engine() -> PyResult<()> {
+            run_async(crate::engine_api::stop_engine())
+        }
+
+        #[pyfunction]
+        fn standardize_groups_command(
+            verts_shm_name: String,
+            edges_shm_name: String,
+            rotations_shm_name: String,
+            scales_shm_name: String,
+            offsets_shm_name: String,
+            vert_counts: Vec<i64>,
+            edge_counts: Vec<i64>,
+            object_counts: Vec<i64>,
+            group_names: Vec<String>,
+            surface_contexts: Vec<String>,
+        ) -> PyResult<String> {
+            run_async(crate::engine_api::standardize_groups_command(
+                verts_shm_name,
+                edges_shm_name,
+                rotations_shm_name,
+                scales_shm_name,
+                offsets_shm_name,
+                vert_counts,
+                edge_counts,
+                object_counts,
+                group_names,
+                surface_contexts,
+            ))
+        }
+
+        #[pyfunction]
+        fn standardize_synced_groups_command(
+            group_names: Vec<String>,
+            surface_contexts: Vec<String>,
+        ) -> PyResult<String> {
+            run_async(crate::engine_api::standardize_synced_groups_command(
+                group_names,
+                surface_contexts,
+            ))
+        }
+
+        #[pyfunction]
+        fn standardize_objects_command(
+            verts_shm_name: String,
+            edges_shm_name: String,
+            rotations_shm_name: String,
+            scales_shm_name: String,
+            offsets_shm_name: String,
+            vert_counts: Vec<i64>,
+            edge_counts: Vec<i64>,
+            object_names: Vec<String>,
+            surface_contexts: Vec<String>,
+        ) -> PyResult<String> {
+            run_async(crate::engine_api::standardize_objects_command(
+                verts_shm_name,
+                edges_shm_name,
+                rotations_shm_name,
+                scales_shm_name,
+                offsets_shm_name,
+                vert_counts,
+                edge_counts,
+                object_names,
+                surface_contexts,
+            ))
+        }
+
+        #[pyfunction]
+        fn set_surface_types_command(
+            group_surface_map: std::collections::HashMap<String, i64>,
+        ) -> PyResult<String> {
+            run_async(crate::engine_api::set_surface_types_command(group_surface_map))
+        }
+
+        #[pyfunction]
+        fn drop_groups_command(group_names: Vec<String>) -> PyResult<String> {
+            run_async(crate::engine_api::drop_groups_command(group_names))
+        }
+
+        #[pyfunction]
+        fn get_surface_types_command() -> PyResult<String> {
+            run_async(crate::engine_api::get_surface_types_command())
+        }
+
+        #[pyfunction]
+        fn get_license_command() -> PyResult<String> {
+            run_async(crate::engine_api::get_license_command())
+        }
+
+        #[pyfunction]
+        fn get_platform_id() -> PyResult<String> {
+            Ok(crate::engine_api::get_platform_id())
+        }
+
+        #[pyfunction]
+        fn get_engine_binary_path() -> PyResult<Option<String>> {
+            Ok(crate::engine_api::resolve_engine_binary_path()
+                .map(|p| p.to_string_lossy().into_owned()))
+        }
+    }
 }
