@@ -19,4 +19,5 @@ iceoryx2-bb-posix = "0.8.1"
 iceoryx2-bb-system-types = "0.8.1"
 rand = "0.8"
 iceoryx2-bb-container = "0.8.1"
+iceoryx2-loggers = {version = "0.8.1", features = ["std", "console"]}
 

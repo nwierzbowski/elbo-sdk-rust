@@ -98,6 +98,7 @@ dependencies = [
  "iceoryx2-bb-container",
  "iceoryx2-bb-posix",
  "iceoryx2-bb-system-types",
+ "iceoryx2-loggers",
  "pyo3",
  "rand",
  "serde",
@@ -276,6 +277,16 @@ name = "iceoryx2-log-types"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f97fa5729b562d2317e35b1c2b32eb5d8e965eb63ad6c4a040cd6b1cbbb2394"
+
+[[package]]
+name = "iceoryx2-loggers"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec234d4a279b9e849dab6b91b8189325205a9e6e77f0ab21f9bfcd7ff370621e"
+dependencies = [
+ "iceoryx2-log-types",
+ "iceoryx2-pal-concurrency-sync",
+]
 
 [[package]]
 name = "iceoryx2-pal-concurrency-sync"

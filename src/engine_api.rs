@@ -149,7 +149,7 @@ pub async fn get_surface_types_command() -> Result<String, String> {
 
 pub async fn get_license_command() -> Result<String, String> {
     let command = json!({
-        "op": "sync_license_mode"
+        "id": 1, "op": "sync_license"
     });
 
     CLIENT.send_command(command.to_string()).await

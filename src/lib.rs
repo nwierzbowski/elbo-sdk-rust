@@ -1,5 +1,6 @@
 mod engine_api;
 mod engine_client; // This line remains unchanged
+extern crate iceoryx2_loggers;
 
 use pyo3::prelude::*;
 
@@ -12,12 +13,15 @@ mod elbo_sdk_rust {
     use iceoryx2_bb_posix::shared_memory::{
         CreationMode, Permission, SharedMemory, SharedMemoryBuilder,
     };
+
     use iceoryx2_bb_system_types::file_name::FileName;
     use pyo3::Py;
     use pyo3::PyAny;
     use pyo3::ffi;
     use rand::Rng;
     use std::os::raw::c_char;
+
+    use serde_json::json;
 
     // Helper function to abstract the common async pattern
     fn run_async<T, E, F>(future: F) -> PyResult<T>
@@ -42,32 +46,32 @@ mod elbo_sdk_rust {
         run_async(crate::engine_api::stop_engine())
     }
 
-    #[pyfunction]
-    fn standardize_groups_command(
-        verts_shm_name: String,
-        edges_shm_name: String,
-        rotations_shm_name: String,
-        scales_shm_name: String,
-        offsets_shm_name: String,
-        vert_counts: Vec<i64>,
-        edge_counts: Vec<i64>,
-        object_counts: Vec<i64>,
-        group_names: Vec<String>,
-        surface_contexts: Vec<String>,
-    ) -> PyResult<String> {
-        run_async(crate::engine_api::standardize_groups_command(
-            verts_shm_name,
-            edges_shm_name,
-            rotations_shm_name,
-            scales_shm_name,
-            offsets_shm_name,
-            vert_counts,
-            edge_counts,
-            object_counts,
-            group_names,
-            surface_contexts,
-        ))
-    }
+    // #[pyfunction]
+    // fn standardize_groups_command(
+    //     verts_shm_name: String,
+    //     edges_shm_name: String,
+    //     rotations_shm_name: String,
+    //     scales_shm_name: String,
+    //     offsets_shm_name: String,
+    //     vert_counts: Vec<i64>,
+    //     edge_counts: Vec<i64>,
+    //     object_counts: Vec<i64>,
+    //     group_names: Vec<String>,
+    //     surface_contexts: Vec<String>,
+    // ) -> PyResult<String> {
+    //     run_async(crate::engine_api::standardize_groups_command(
+    //         verts_shm_name,
+    //         edges_shm_name,
+    //         rotations_shm_name,
+    //         scales_shm_name,
+    //         offsets_shm_name,
+    //         vert_counts,
+    //         edge_counts,
+    //         object_counts,
+    //         group_names,
+    //         surface_contexts,
+    //     ))
+    // }
 
     #[pyfunction]
     fn standardize_synced_groups_command(
@@ -101,7 +105,14 @@ mod elbo_sdk_rust {
 
     #[pyfunction]
     fn get_license_command() -> PyResult<String> {
-        run_async(crate::engine_api::get_license_command())
+        let result: String = run_async(crate::engine_api::get_license_command())?;
+        let v: serde_json::Value = serde_json::from_str(&result)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("invalid JSON: {}", e)))?;
+        let engine_edition = v
+            .get("engine_edition")
+            .and_then(|val| val.as_str())
+            .map(|s| s.to_string());
+        Ok(engine_edition.unwrap_or_default())
     }
 
     #[pyfunction]

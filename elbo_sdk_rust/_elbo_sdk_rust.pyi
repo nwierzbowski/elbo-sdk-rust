@@ -6,18 +6,18 @@ def start_engine(path: str) -> None: ...
 def stop_engine() -> None: ...
 
 
-def standardize_groups_command(
-    verts_shm_name: str,
-    edges_shm_name: str,
-    rotations_shm_name: str,
-    scales_shm_name: str,
-    offsets_shm_name: str,
-    vert_counts: List[int],
-    edge_counts: List[int],
-    object_counts: List[int],
-    group_names: List[str],
-    surface_contexts: List[str],
-) -> str: ...
+# def standardize_groups_command(
+#     verts_shm_name: str,
+#     edges_shm_name: str,
+#     rotations_shm_name: str,
+#     scales_shm_name: str,
+#     offsets_shm_name: str,
+#     vert_counts: List[int],
+#     edge_counts: List[int],
+#     object_counts: List[int],
+#     group_names: List[str],
+#     surface_contexts: List[str],
+# ) -> str: ...
 
 
 def standardize_synced_groups_command(
