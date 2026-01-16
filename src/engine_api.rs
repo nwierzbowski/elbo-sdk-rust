@@ -2,8 +2,11 @@ use crate::engine_client::EngineClient;
 use serde_json::json;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 use tokio::runtime::Runtime;
 
 const COMMAND_SET_SURFACE_TYPES: i64 = 4;
@@ -11,6 +14,7 @@ const COMMAND_DROP_GROUPS: i64 = 5;
 const COMMAND_CLASSIFY_GROUPS: i64 = 1;
 const COMMAND_CLASSIFY_OBJECTS: i64 = 1;
 const COMMAND_GET_GROUP_SURFACE_TYPES: i64 = 2;
+const COMMAND_ORGANIZE_OBJECTS: i64 = 6;
 
 pub static CLIENT: LazyLock<EngineClient> = LazyLock::new(|| EngineClient::new());
 pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -19,12 +23,17 @@ pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .build()
         .expect("Failed to create Tokio runtime")
 });
+pub static ENGINE_DIR: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
 
 // Module-level singleton `CLIENT` is used below; `EngineClient` methods are
 // invoked directly from the free functions to avoid thin wrapper types.
 
-pub async fn start_engine(path: String) -> Result<(), String> {
-    CLIENT.start(path).await
+pub async fn start_engine() -> Result<(), String> {
+    let engine_path = resolve_engine_binary_path()
+        .ok_or_else(|| "Failed to locate pivot_engine binary".to_string())?;
+    CLIENT
+        .start(engine_path.to_string_lossy().to_string())
+        .await
 }
 
 pub async fn stop_engine() -> Result<(), String> {
@@ -138,6 +147,15 @@ pub async fn drop_groups_command(group_names: Vec<String>) -> Result<String, Str
     CLIENT.send_command(command.to_string()).await
 }
 
+pub async fn organize_objects_command() -> Result<String, String> {
+    let command = json!({
+        "id": COMMAND_ORGANIZE_OBJECTS,
+        "op": "organize_objects"
+    });
+
+    CLIENT.send_command(command.to_string()).await
+}
+
 pub async fn get_surface_types_command() -> Result<String, String> {
     let command = json!({
         "id": COMMAND_GET_GROUP_SURFACE_TYPES,
@@ -153,6 +171,37 @@ pub async fn get_license_command() -> Result<String, String> {
     });
 
     CLIENT.send_command(command.to_string()).await
+}
+
+pub fn set_engine_dir(path: PathBuf) {
+    let mut guard = ENGINE_DIR
+        .lock()
+        .expect("Failed to lock static engine directory");
+    *guard = Some(path);
+}
+
+fn stored_engine_dir() -> Option<PathBuf> {
+    ENGINE_DIR.lock().ok().and_then(|guard| guard.clone())
+}
+
+fn pivot_engine_executable_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pivot_engine.exe"
+    } else {
+        "pivot_engine"
+    }
+}
+
+fn ensure_executable(path: &PathBuf) {
+    #[cfg(unix)]
+    {
+        if let Ok(meta) = fs::metadata(path) {
+            let mode = meta.permissions().mode();
+            if mode & 0o111 == 0 {
+                let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode | 0o111));
+            }
+        }
+    }
 }
 
 // Platform / binary resolution helpers (mirrors C++ `get_platform_id`/`resolve_engine_binary_path`)
@@ -179,16 +228,29 @@ pub fn resolve_engine_binary_path() -> Option<PathBuf> {
         if !val.is_empty() {
             let pb = PathBuf::from(&val);
             if pb.is_file() {
+                // return Some(pb);
+                ensure_executable(&pb);
                 return Some(pb);
             }
         }
     }
 
-    if let Ok(found) = which::which("pivot_engine") {
-        return Some(found);
+    if let Some(engine_dir) = stored_engine_dir() {
+        let exe_name = pivot_engine_executable_name();
+        let platform_path = engine_dir.join(get_platform_id()).join(exe_name);
+        if platform_path.is_file() {
+            // return Some(platform_path);
+            ensure_executable(&platform_path);
+            return Some(platform_path);
+        }
+
+        let fallback = engine_dir.join(exe_name);
+        if fallback.is_file() {
+            // return Some(fallback);
+            ensure_executable(&fallback);
+            return Some(fallback);
+        }
     }
 
     None
 }
-
-
