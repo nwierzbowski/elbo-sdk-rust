@@ -3,7 +3,7 @@ mod engine_client; // This line remains unchanged
 
 use pyo3::prelude::*;
 
-#[pymodule]
+#[pymodule(name = "_elbo_sdk_rust")]
 mod elbo_sdk_rust {
     use pyo3::prelude::*;
 
