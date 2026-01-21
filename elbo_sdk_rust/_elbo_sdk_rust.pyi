@@ -50,25 +50,9 @@ def get_platform_id() -> str: ...
 def set_engine_dir(path: str) -> None: ...
 
 
-class StandardizeObjectContext:
-    def buffers(self) -> Tuple[memoryview, memoryview, memoryview, memoryview, memoryview]: ...
-    def finalize(self) -> str: ...
-
-
 class StandardizeGroupContext:
     def buffers(self) -> Tuple[memoryview, memoryview, memoryview, memoryview, memoryview]: ...
     def finalize(self) -> str: ...
-
-
-def prepare_standardize_objects(
-    total_verts: int,
-    total_edges: int,
-    total_objects: int,
-    vert_counts: List[int],
-    edge_counts: List[int],
-    object_names: List[str],
-    surface_contexts: List[str],
-) -> StandardizeObjectContext: ...
 
 
 def prepare_standardize_groups(

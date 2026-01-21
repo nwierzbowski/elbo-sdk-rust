@@ -1,5 +1,17 @@
+use crate::com_types::EngineCommand;
+use crate::com_types::EngineResponse;
+use crate::com_types::GroupFull;
+use crate::com_types::GroupNames;
+use crate::com_types::GroupSurface;
+use crate::com_types::MAX_HANDLE_LEN;
+use crate::com_types::MAX_INLINE_DATA;
+use crate::com_types::OP_DROP_GROUPS;
+use crate::com_types::OP_GET_SURFACE_TYPES;
+use crate::com_types::OP_ORGANIZE_OBJECTS;
+use crate::com_types::OP_SET_SURFACE_TYPES;
+use crate::com_types::OP_STANDARDIZE_GROUPS;
+use crate::com_types::OP_STANDARDIZE_SYNCED_GROUPS;
 use crate::engine_client::EngineClient;
-use serde_json::json;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -7,170 +19,170 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
-use tokio::runtime::Runtime;
 
-const COMMAND_SET_SURFACE_TYPES: i64 = 4;
-const COMMAND_DROP_GROUPS: i64 = 5;
-const COMMAND_CLASSIFY_GROUPS: i64 = 1;
-const COMMAND_CLASSIFY_OBJECTS: i64 = 1;
-const COMMAND_GET_GROUP_SURFACE_TYPES: i64 = 2;
-const COMMAND_ORGANIZE_OBJECTS: i64 = 6;
 
 pub static CLIENT: LazyLock<EngineClient> = LazyLock::new(|| EngineClient::new());
-pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create Tokio runtime")
-});
 pub static ENGINE_DIR: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
 
 // Module-level singleton `CLIENT` is used below; `EngineClient` methods are
 // invoked directly from the free functions to avoid thin wrapper types.
 
-pub async fn start_engine() -> Result<(), String> {
+// Operation IDs used in `EngineCommand.op_id`.
+
+
+pub fn start_engine() -> Result<(), String> {
     let engine_path = resolve_engine_binary_path()
         .ok_or_else(|| "Failed to locate pivot_engine binary".to_string())?;
-    CLIENT
-        .start(engine_path.to_string_lossy().to_string())
-        .await
+    CLIENT.start(engine_path.to_string_lossy().to_string())?;
+    CLIENT.listen_for_updates();
+    Ok(())
 }
 
-pub async fn stop_engine() -> Result<(), String> {
-    CLIENT.stop().await
+pub fn stop_engine() -> Result<(), String> {
+    CLIENT.stop()?;
+    Ok(())
 }
 
-pub async fn standardize_groups_command(
-    verts_shm_name: String,
-    edges_shm_name: String,
-    rotations_shm_name: String,
-    scales_shm_name: String,
-    offsets_shm_name: String,
-    vert_counts: Vec<i64>,
-    edge_counts: Vec<i64>,
-    object_counts: Vec<i64>,
+pub fn standardize_groups_command(meta_vec: Vec<GroupFull>) -> Result<EngineResponse, String> {
+    let mut command = EngineCommand {
+        payload_mode: 0,
+        should_cache: 1,
+        op_id: OP_STANDARDIZE_GROUPS,
+        num_groups: meta_vec.len() as u32,
+        inline_data: [0; MAX_INLINE_DATA],
+        shm_fallback_handle: [0; MAX_HANDLE_LEN],
+    };
+    
+    command.copy_payload_into_inline(&meta_vec);
+    
+    CLIENT.send_command(command)
+}
+
+pub fn standardize_synced_groups_command(
     group_names: Vec<String>,
-    surface_contexts: Vec<String>,
-) -> Result<String, String> {
-    let command = json!({
-        "id": COMMAND_CLASSIFY_GROUPS,
-        "op": "standardize_groups",
-        "shm_verts": verts_shm_name,
-        "shm_edges": edges_shm_name,
-        "shm_rotations": rotations_shm_name,
-        "shm_scales": scales_shm_name,
-        "shm_offsets": offsets_shm_name,
-        "vert_counts": vert_counts,
-        "edge_counts": edge_counts,
-        "object_counts": object_counts,
-        "group_names": group_names,
-        "surface_contexts": surface_contexts,
-    });
+    surface_types: Vec<u32>,
+) -> Result<EngineResponse, String> {
+    // let command = json!({
+    //     "id": COMMAND_CLASSIFY_GROUPS,
+    //     "op": "standardize_synced_groups",
+    //     "group_names": group_names,
+    //     "surface_contexts": surface_contexts,
+    // });
+    let count = group_names.len() as u32;
+    let mut surface_vec: Vec<GroupSurface> = Vec::with_capacity(count as usize);
 
-    CLIENT.send_command(command.to_string()).await
+    for i in 0..count as usize {
+        let surf = GroupSurface::new(&group_names[i], surface_types[i] as u64);
+        surface_vec.push(surf);
+    }
+
+    let mut command = EngineCommand {
+        payload_mode: 0,
+        should_cache: 1,
+        op_id: OP_STANDARDIZE_SYNCED_GROUPS,
+        num_groups: count,
+        inline_data: [0; MAX_INLINE_DATA],
+        shm_fallback_handle: [0; MAX_HANDLE_LEN],
+    };
+
+    command.copy_payload_into_inline(&surface_vec);
+
+    CLIENT.send_command(command)
 }
 
-pub async fn standardize_synced_groups_command(
-    group_names: Vec<String>,
-    surface_contexts: Vec<String>,
-) -> Result<String, String> {
-    let command = json!({
-        "id": COMMAND_CLASSIFY_GROUPS,
-        "op": "standardize_synced_groups",
-        "group_names": group_names,
-        "surface_contexts": surface_contexts,
-    });
-
-    CLIENT.send_command(command.to_string()).await
-}
-
-pub async fn standardize_objects_command(
-    verts_shm_name: String,
-    edges_shm_name: String,
-    rotations_shm_name: String,
-    scales_shm_name: String,
-    offsets_shm_name: String,
-    vert_counts: Vec<i64>,
-    edge_counts: Vec<i64>,
-    object_names: Vec<String>,
-    surface_contexts: Vec<String>,
-) -> Result<String, String> {
-    let command = json!({
-        "id": COMMAND_CLASSIFY_OBJECTS,
-        "op": "standardize_objects",
-        "shm_verts": verts_shm_name,
-        "shm_edges": edges_shm_name,
-        "shm_rotations": rotations_shm_name,
-        "shm_scales": scales_shm_name,
-        "shm_offsets": offsets_shm_name,
-        "vert_counts": vert_counts,
-        "edge_counts": edge_counts,
-        "object_names": object_names,
-        "surface_contexts": surface_contexts,
-    });
-
-    CLIENT.send_command(command.to_string()).await
-}
-
-pub async fn set_surface_types_command(
+pub fn set_surface_types_command(
     group_surface_map: HashMap<String, i64>,
-) -> Result<String, String> {
-    if group_surface_map.is_empty() {
-        return Ok(json!({"ok": true}).to_string());
-    }
+) -> Result<EngineResponse, String> {
+    let count = group_surface_map.len() as u32;
+    let mut surface_vec: Vec<GroupSurface> = Vec::with_capacity(count as usize);
 
-    let classifications: Vec<_> = group_surface_map
-        .into_iter()
-        .map(|(name, surface)| json!({"group_name": name, "surface_type": surface}))
-        .collect();
-
-    let command = json!({
-        "id": COMMAND_SET_SURFACE_TYPES,
-        "op": "set_surface_types",
-        "classifications": classifications
+    group_surface_map.iter().for_each(|(name, surface_type)| {
+        let surf = GroupSurface::new(name, *surface_type as u64);
+        surface_vec.push(surf);
     });
 
-    CLIENT.send_command(command.to_string()).await
+    // let command = json!({
+    //     "id": COMMAND_SET_SURFACE_TYPES,
+    //     "op": "set_surface_types",
+    //     "classifications": classifications
+    // });
+
+    let mut command = EngineCommand {
+        payload_mode: 0,
+        should_cache: 1,
+        op_id: OP_SET_SURFACE_TYPES,
+        num_groups: count,
+        inline_data: [0; MAX_INLINE_DATA],
+        shm_fallback_handle: [0; MAX_HANDLE_LEN],
+    };
+
+    command.copy_payload_into_inline(&surface_vec);
+
+    CLIENT.send_command(command)
 }
 
-pub async fn drop_groups_command(group_names: Vec<String>) -> Result<String, String> {
-    if group_names.is_empty() {
-        return Ok(json!({"dropped_count": 0}).to_string());
-    }
+pub fn drop_groups_command(group_names: Vec<String>) -> Result<EngineResponse, String> {
 
-    let command = json!({
-        "id": COMMAND_DROP_GROUPS,
-        "op": "drop_groups",
-        "group_names": group_names
+    // let command = json!({
+    //     "id": COMMAND_DROP_GROUPS,
+    //     "op": "drop_groups",
+    //     "group_names": group_names
+    // });
+    let count = group_names.len() as u32;
+    let mut name_vec: Vec<GroupNames> = Vec::with_capacity(count as usize);
+
+    group_names.iter().for_each(|name| {
+        name_vec.push(GroupNames::new(name));
     });
 
-    CLIENT.send_command(command.to_string()).await
+    let mut command = EngineCommand {
+        payload_mode: 0,
+        should_cache: 1,
+        op_id: OP_DROP_GROUPS,
+        num_groups: count,
+        inline_data: [0; MAX_INLINE_DATA],
+        shm_fallback_handle: [0; MAX_HANDLE_LEN],
+    };
+
+    command.copy_payload_into_inline(&name_vec);
+
+    CLIENT.send_command(command)
 }
 
-pub async fn organize_objects_command() -> Result<String, String> {
-    let command = json!({
-        "id": COMMAND_ORGANIZE_OBJECTS,
-        "op": "organize_objects"
-    });
+pub fn organize_objects_command() -> Result<EngineResponse, String> {
+    // let command = json!({
+    //     "id": COMMAND_ORGANIZE_OBJECTS,
+    //     "op": "organize_objects"
+    // });
 
-    CLIENT.send_command(command.to_string()).await
+    let command = EngineCommand {
+        payload_mode: 0,
+        should_cache: 1,
+        op_id: OP_ORGANIZE_OBJECTS,
+        num_groups: 0,
+        inline_data: [0; MAX_INLINE_DATA],
+        shm_fallback_handle: [0; MAX_HANDLE_LEN],
+    };
+
+    CLIENT.send_command(command)
 }
 
-pub async fn get_surface_types_command() -> Result<String, String> {
-    let command = json!({
-        "id": COMMAND_GET_GROUP_SURFACE_TYPES,
-        "op": "get_surface_types"
-    });
+pub fn get_surface_types_command() -> Result<EngineResponse, String> {
+    // let command = json!({
+    //     "id": COMMAND_GET_GROUP_SURFACE_TYPES,
+    //     "op": "get_surface_types"
+    // });
 
-    CLIENT.send_command(command.to_string()).await
-}
+    let command = EngineCommand {
+        payload_mode: 0,
+        should_cache: 1,
+        op_id: OP_GET_SURFACE_TYPES,
+        num_groups: 0,
+        inline_data: [0; MAX_INLINE_DATA],
+        shm_fallback_handle: [0; MAX_HANDLE_LEN],
+    };
 
-pub async fn get_license_command() -> Result<String, String> {
-    let command = json!({
-        "id": 1, "op": "sync_license"
-    });
-
-    CLIENT.send_command(command.to_string()).await
+    CLIENT.send_command(command)
 }
 
 pub fn set_engine_dir(path: PathBuf) {
