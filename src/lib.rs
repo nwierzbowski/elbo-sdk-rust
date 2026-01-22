@@ -116,15 +116,16 @@ mod elbo_sdk_rust {
             let g = self.group_mvs.get(i).ok_or_else(|| {
                 PyErr::new::<pyo3::exceptions::PyIndexError, _>(format!("index {} out of range", i))
             })?;
-            Ok((
-                memoryview_from_slice(py, g.verts)?,
-                memoryview_from_slice(py, g.edges)?,
-                memoryview_from_slice(py, g.rotations)?,
-                memoryview_from_slice(py, g.scales)?,
-                memoryview_from_slice(py, g.offsets)?,
-                memoryview_from_slice(py, g.vert_counts)?,
-                memoryview_from_slice(py, g.edge_counts)?,
-            ))
+
+            let v = memoryview_from_slice(py, g.verts)?;
+            let e = memoryview_from_slice(py, g.edges)?;
+            let r = memoryview_from_slice(py, g.rotations)?;
+            let s = memoryview_from_slice(py, g.scales)?;
+            let o = memoryview_from_slice(py, g.offsets)?;
+            let vc = memoryview_from_slice(py, g.vert_counts)?;
+            let ec = memoryview_from_slice(py, g.edge_counts)?;
+
+            Ok((v, e, r, s, o, vc, ec))
         }
 
         fn finalize(&mut self) -> () {
