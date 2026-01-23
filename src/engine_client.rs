@@ -8,6 +8,7 @@ use std::time::Duration;
 use crate::com_types::{EngineCommand, EngineResponse};
 
 const COMMAND_SERVICE_NAME: &str = "PivotEngine/CommandService";
+const COMMAND_EVENT_SERVICE_NAME: &str = "PivotEngine/CommandEvents";
 const MESH_UPDATES_SERVICE_NAME: &str = "PivotEngine/MeshUpdates";
 const NOTIFICATIONS_SERVICE_NAME: &str = "PivotEngine/Notifications";
 
@@ -120,19 +121,12 @@ impl EngineClient {
                 }
             };
 
-            let waitset = WaitSetBuilder::new().create::<ipc::Service>().unwrap();
-            let _guard = waitset.attach_notification(&listener).unwrap();
-
             println!("Background mesh sync loop active.");
 
             loop {
                 // Blocks here until the Engine signals the listener
-                if waitset
-                    .wait_and_process(|_| CallbackProgression::Stop)
-                    .is_err()
-                {
-                    break;
-                }
+                let _ = listener.blocking_wait_all(|_|{});
+                println!("Mesh update unblocked.");
 
                 // Drain all pending samples from the subscriber
                 while let Ok(Some(sample)) = subscriber.receive() {
@@ -149,24 +143,32 @@ impl EngineClient {
         command_rx: mpsc::Receiver<CommandWork>,
     ) {
         thread::spawn(move || {
-            let service = loop {
-                match node
+            let (service, notifier) = loop {
+                let cmd_service = node
                     .service_builder(&COMMAND_SERVICE_NAME.try_into().unwrap())
                     .request_response::<EngineCommand, EngineResponse>()
-                    .open()
-                {
-                    Ok(s) => break s,
-                    Err(e) => {
-                        // This will tell you if the types don't match!
-                        println!("Waiting for Engine command service: {:?}", e);
+                    .open();
+
+                let cmd_event_service = node
+                    .service_builder(&COMMAND_EVENT_SERVICE_NAME.try_into().unwrap())
+                    .event()
+                    .open();
+
+                match (cmd_service, cmd_event_service) {
+                    (Ok(s), Ok(n)) => break (s, n),
+                    _ => {
+                        // Engine isn't fully ready yet, or services aren't registered.
+                        // Sleep for a bit and try again.
+                        thread::sleep(Duration::from_millis(500));
+                        println!("Waiting for Engine command services to appear...");
                     }
                 }
-                thread::sleep(Duration::from_millis(500));
             };
 
             println!("Command service loop active.");
 
             let iox_client = service.client_builder().create().unwrap();
+            let cmd_notifier = notifier.notifier_builder().create().expect("Failed to create Notifier");
 
             while let Ok(work) = command_rx.recv() {
                 let result = (|| -> Result<EngineResponse, String> {
@@ -177,7 +179,8 @@ impl EngineClient {
                         .write_payload(work.cmd)
                         .send()
                         .map_err(|e| format!("Send failed: {}", e))?;
-
+                    // Notify the engine that a new command is available
+                    cmd_notifier.notify().map_err(|e| format!("Notifier failed: {}", e))?;
                     loop {
                         if let Some(res) = pending.receive().map_err(|e| e.to_string())? {
                             return Ok(res.payload().clone());
