@@ -1,4 +1,5 @@
 use iceoryx2::prelude::*;
+use pivot_com_types::{MAX_HANDLE_LEN, MAX_INLINE_DATA, OP_STOP_ENGINE};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -82,6 +83,7 @@ impl EngineClient {
         let state = guard.as_ref().ok_or("Engine not started")?;
 
         let (tx, rx) = mpsc::channel();
+
         state
             .command_tx
             .send(CommandWork {
@@ -157,6 +159,7 @@ impl EngineClient {
                     // Logic for processing mesh (e.g. updating a local renderer) goes here
                 }
             }
+            println!("Background mesh sync loop exiting.");
         });
         state.threads.push(handle);
     }
@@ -166,8 +169,6 @@ impl EngineClient {
         command_rx: mpsc::Receiver<CommandWork>,
         shutdown: Arc<AtomicBool>,
     ) -> std::thread::JoinHandle<()> {
-
-
         thread::spawn(move || {
             let (service, notifier) = loop {
                 let cmd_service = node
@@ -199,7 +200,6 @@ impl EngineClient {
                 .create()
                 .expect("Failed to create Notifier");
 
-
             while !shutdown.load(Ordering::Relaxed) {
                 while let Ok(work) = command_rx.recv_timeout(Duration::from_millis(200)) {
                     let result = (|| -> Result<EngineResponse, String> {
@@ -226,15 +226,39 @@ impl EngineClient {
                     let _ = work.response_tx.send(result);
                 }
             }
+            println!("Command service loop exiting.");
         })
     }
 
     pub fn stop(&self) -> Result<(), String> {
-        let mut guard = self.state.lock().unwrap();
+        {
+            let guard = self.state.lock().unwrap();
+            if guard.is_none() {
+                return Ok(());
+            }
+        }
 
+        let command = EngineCommand {
+            payload_mode: 0,
+            should_cache: 1,
+            op_id: OP_STOP_ENGINE,
+            num_groups: 0,
+            inline_data: [0; MAX_INLINE_DATA],
+            shm_fallback_handle: [0; MAX_HANDLE_LEN],
+        };
+        let res = self.send_command(command);
+
+        let mut guard = self.state.lock().unwrap();
         if let Some(mut state) = guard.take() {
+            if let Err(e) = res {
+                eprintln!(
+                    "Failed to send stop command to engine, killing process: {}",
+                    e
+                );
+                let _ = state.engine_process.kill();
+            }
+
             state.shutdown.store(true, Ordering::SeqCst);
-            let _ = state.engine_process.kill();
 
             for handle in state.threads {
                 let _ = handle.join();
@@ -244,6 +268,7 @@ impl EngineClient {
 
             println!("All threads joined. SDK is clean.");
         }
+
         Ok(())
     }
 }
