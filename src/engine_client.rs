@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::com_types::{EngineCommand, EngineResponse};
+use pivot_com_types::com_types::{EngineCommand, EngineResponse};
 
 const COMMAND_SERVICE_NAME: &str = "PivotEngine/CommandService";
 const COMMAND_EVENT_SERVICE_NAME: &str = "PivotEngine/CommandEvents";

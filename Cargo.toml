@@ -19,3 +19,5 @@ iceoryx2-bb-container = "0.8.1"
 iceoryx2-loggers = {version = "0.8.1", features = ["std", "console"]}
 iceoryx2 = "0.8.1"
 
+pivot-com-types = { git = "https://github.com/nwierzbowski/pivot-core.git", package = "pivot-com-types" }
+

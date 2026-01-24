@@ -1,4 +1,3 @@
-mod com_types;
 mod engine_api;
 mod engine_client; // This line remains unchanged
 extern crate iceoryx2_loggers;
@@ -15,7 +14,7 @@ mod elbo_sdk_rust {
     };
     use std::path::PathBuf;
 
-    use crate::com_types;
+    use pivot_com_types::com_types;
     use crate::engine_api;
     use iceoryx2_bb_system_types::file_name::FileName;
     use pyo3::Py;
