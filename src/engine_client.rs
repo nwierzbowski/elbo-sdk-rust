@@ -1,5 +1,6 @@
 use iceoryx2::prelude::*;
 use std::process::Child;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -24,11 +25,14 @@ struct ActiveState {
     engine_process: Child,
     // The iceoryx2 client port for sending commands
     command_tx: mpsc::SyncSender<CommandWork>,
+    shutdown: Arc<AtomicBool>,
+    threads: Vec<std::thread::JoinHandle<()>>,
+    mesh_sync_running: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
 pub struct EngineClient {
-    state: Arc<Mutex<Option<ActiveState>>>,
+    state: Mutex<Option<ActiveState>>,
     // The node is the identity of this process in the iceoryx2 network
     node: Arc<Node<ipc::Service>>,
 }
@@ -40,7 +44,7 @@ impl EngineClient {
             .expect("Failed to create iceoryx2 node");
 
         EngineClient {
-            state: Arc::new(Mutex::new(None)),
+            state: Mutex::new(None),
             node: Arc::new(node),
         }
     }
@@ -58,11 +62,16 @@ impl EngineClient {
 
         let (command_tx, command_rx) = mpsc::sync_channel::<CommandWork>(10);
         let node_handle = self.node.clone();
-        Self::spawn_command_service(node_handle, command_rx);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let command_thread = Self::spawn_command_service(node_handle, command_rx, shutdown.clone());
+        let mesh_sync_running = Arc::new(AtomicBool::new(false));
 
         *guard = Some(ActiveState {
             engine_process,
             command_tx,
+            threads: vec![command_thread],
+            shutdown: shutdown,
+            mesh_sync_running,
         });
         Ok(())
     }
@@ -88,9 +97,23 @@ impl EngineClient {
     }
 
     pub fn listen_for_updates(&self) {
+        let mut guard = self.state.lock().unwrap();
+        let state = match guard.as_mut() {
+            Some(state) => state,
+            None => panic!("Engine not started"),
+        };
+
+        let shutdown = state.shutdown.clone();
+        let mesh_sync_running = state.mesh_sync_running.clone();
         let node = self.node.clone();
 
-        thread::spawn(move || {
+        if mesh_sync_running.load(Ordering::Relaxed) {
+            return;
+        }
+        mesh_sync_running.store(true, Ordering::Relaxed);
+
+        println!("Spawning mesh update listener thread.");
+        let handle = thread::spawn(move || {
             // 1. Create independent ports for this thread
             // This ensures we never compete with send_command for a Mutex.
 
@@ -123,10 +146,9 @@ impl EngineClient {
 
             println!("Background mesh sync loop active.");
 
-            loop {
+            while !shutdown.load(Ordering::Relaxed) {
                 // Blocks here until the Engine signals the listener
-                let _ = listener.blocking_wait_all(|_|{});
-                println!("Mesh update unblocked.");
+                let _ = listener.timed_wait_all(|_| {}, Duration::from_millis(200));
 
                 // Drain all pending samples from the subscriber
                 while let Ok(Some(sample)) = subscriber.receive() {
@@ -136,12 +158,16 @@ impl EngineClient {
                 }
             }
         });
+        state.threads.push(handle);
     }
 
     fn spawn_command_service(
         node: Arc<Node<ipc::Service>>,
         command_rx: mpsc::Receiver<CommandWork>,
-    ) {
+        shutdown: Arc<AtomicBool>,
+    ) -> std::thread::JoinHandle<()> {
+
+
         thread::spawn(move || {
             let (service, notifier) = loop {
                 let cmd_service = node
@@ -168,39 +194,55 @@ impl EngineClient {
             println!("Command service loop active.");
 
             let iox_client = service.client_builder().create().unwrap();
-            let cmd_notifier = notifier.notifier_builder().create().expect("Failed to create Notifier");
+            let cmd_notifier = notifier
+                .notifier_builder()
+                .create()
+                .expect("Failed to create Notifier");
 
-            while let Ok(work) = command_rx.recv() {
-                let result = (|| -> Result<EngineResponse, String> {
-                    let request = iox_client
-                        .loan_uninit()
-                        .map_err(|e| format!("SHM loan failed: {}", e))?;
-                    let pending = request
-                        .write_payload(work.cmd)
-                        .send()
-                        .map_err(|e| format!("Send failed: {}", e))?;
-                    // Notify the engine that a new command is available
-                    cmd_notifier.notify().map_err(|e| format!("Notifier failed: {}", e))?;
-                    loop {
-                        if let Some(res) = pending.receive().map_err(|e| e.to_string())? {
-                            return Ok(res.payload().clone());
+
+            while !shutdown.load(Ordering::Relaxed) {
+                while let Ok(work) = command_rx.recv_timeout(Duration::from_millis(200)) {
+                    let result = (|| -> Result<EngineResponse, String> {
+                        let request = iox_client
+                            .loan_uninit()
+                            .map_err(|e| format!("SHM loan failed: {}", e))?;
+                        let pending = request
+                            .write_payload(work.cmd)
+                            .send()
+                            .map_err(|e| format!("Send failed: {}", e))?;
+                        // Notify the engine that a new command is available
+                        cmd_notifier
+                            .notify()
+                            .map_err(|e| format!("Notifier failed: {}", e))?;
+                        loop {
+                            if let Some(res) = pending.receive().map_err(|e| e.to_string())? {
+                                return Ok(res.payload().clone());
+                            }
+                            // Tiny sleep to prevent 100% CPU during the microsecond wait
+                            thread::sleep(std::time::Duration::from_micros(100));
                         }
-                        // Tiny sleep to prevent 100% CPU during the microsecond wait
-                        thread::sleep(std::time::Duration::from_micros(100));
-                    }
-                })();
+                    })();
 
-                let _ = work.response_tx.send(result);
+                    let _ = work.response_tx.send(result);
+                }
             }
-        });
+        })
     }
 
     pub fn stop(&self) -> Result<(), String> {
         let mut guard = self.state.lock().unwrap();
 
         if let Some(mut state) = guard.take() {
+            state.shutdown.store(true, Ordering::SeqCst);
             let _ = state.engine_process.kill();
+
+            for handle in state.threads {
+                let _ = handle.join();
+            }
+
             let _ = state.engine_process.wait();
+
+            println!("All threads joined. SDK is clean.");
         }
         Ok(())
     }
