@@ -239,12 +239,10 @@ impl EngineClient {
         }
 
         let command = EngineCommand {
-            payload_mode: 0,
             should_cache: 1,
             op_id: OP_STOP_ENGINE,
             num_groups: 0,
             inline_data: [0; MAX_INLINE_DATA],
-            shm_fallback_handle: [0; MAX_HANDLE_LEN],
         };
         let res = self.send_command(command);
 

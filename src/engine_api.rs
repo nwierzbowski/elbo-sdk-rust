@@ -1,9 +1,9 @@
+use pivot_com_types::AssetMeta;
+use pivot_com_types::ShmOffset;
 use pivot_com_types::com_types::EngineCommand;
 use pivot_com_types::com_types::EngineResponse;
-use pivot_com_types::com_types::GroupFull;
 use pivot_com_types::com_types::GroupNames;
 use pivot_com_types::com_types::GroupSurface;
-use pivot_com_types::com_types::MAX_HANDLE_LEN;
 use pivot_com_types::com_types::MAX_INLINE_DATA;
 use pivot_com_types::com_types::OP_DROP_GROUPS;
 use pivot_com_types::com_types::OP_GET_SURFACE_TYPES;
@@ -43,14 +43,12 @@ pub fn stop_engine() -> Result<(), String> {
     Ok(())
 }
 
-pub fn standardize_groups_command(meta_vec: Vec<GroupFull>) -> Result<EngineResponse, String> {
+pub fn standardize_groups_command(meta_vec: Vec<ShmOffset>) -> Result<EngineResponse, String> {
     let mut command = EngineCommand {
-        payload_mode: 0,
         should_cache: 1,
         op_id: OP_STANDARDIZE_GROUPS,
         num_groups: meta_vec.len() as u32,
         inline_data: [0; MAX_INLINE_DATA],
-        shm_fallback_handle: [0; MAX_HANDLE_LEN],
     };
     
     command.copy_payload_into_inline(&meta_vec);
@@ -77,12 +75,10 @@ pub fn standardize_synced_groups_command(
     }
 
     let mut command = EngineCommand {
-        payload_mode: 0,
         should_cache: 1,
         op_id: OP_STANDARDIZE_SYNCED_GROUPS,
         num_groups: count,
         inline_data: [0; MAX_INLINE_DATA],
-        shm_fallback_handle: [0; MAX_HANDLE_LEN],
     };
 
     command.copy_payload_into_inline(&surface_vec);
@@ -108,12 +104,10 @@ pub fn set_surface_types_command(
     // });
 
     let mut command = EngineCommand {
-        payload_mode: 0,
         should_cache: 1,
         op_id: OP_SET_SURFACE_TYPES,
         num_groups: count,
         inline_data: [0; MAX_INLINE_DATA],
-        shm_fallback_handle: [0; MAX_HANDLE_LEN],
     };
 
     command.copy_payload_into_inline(&surface_vec);
@@ -136,12 +130,10 @@ pub fn drop_groups_command(group_names: Vec<String>) -> Result<EngineResponse, S
     });
 
     let mut command = EngineCommand {
-        payload_mode: 0,
         should_cache: 1,
         op_id: OP_DROP_GROUPS,
         num_groups: count,
         inline_data: [0; MAX_INLINE_DATA],
-        shm_fallback_handle: [0; MAX_HANDLE_LEN],
     };
 
     command.copy_payload_into_inline(&name_vec);
@@ -156,12 +148,10 @@ pub fn organize_objects_command() -> Result<EngineResponse, String> {
     // });
 
     let command = EngineCommand {
-        payload_mode: 0,
         should_cache: 1,
         op_id: OP_ORGANIZE_OBJECTS,
         num_groups: 0,
         inline_data: [0; MAX_INLINE_DATA],
-        shm_fallback_handle: [0; MAX_HANDLE_LEN],
     };
 
     CLIENT.send_command(command)
@@ -174,12 +164,10 @@ pub fn get_surface_types_command() -> Result<EngineResponse, String> {
     // });
 
     let command = EngineCommand {
-        payload_mode: 0,
         should_cache: 1,
         op_id: OP_GET_SURFACE_TYPES,
         num_groups: 0,
         inline_data: [0; MAX_INLINE_DATA],
-        shm_fallback_handle: [0; MAX_HANDLE_LEN],
     };
 
     CLIENT.send_command(command)

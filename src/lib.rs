@@ -6,17 +6,15 @@ use pyo3::prelude::*;
 
 #[pymodule(name = "_elbo_sdk_rust")]
 mod elbo_sdk_rust {
+    use pivot_com_types::MAX_NAME_LEN;
     use pyo3::prelude::*;
 
-    use iceoryx2_bb_container::semantic_string::SemanticString;
-    use iceoryx2_bb_posix::shared_memory::{
-        CreationMode, Permission, SharedMemory, SharedMemoryBuilder,
-    };
+    use iceoryx2_bb_posix::shared_memory::SharedMemory;
     use std::path::PathBuf;
 
-    use pivot_com_types::com_types;
     use crate::engine_api;
-    use iceoryx2_bb_system_types::file_name::FileName;
+    use pivot_com_types::com_types;
+
     use pyo3::Py;
     use pyo3::PyAny;
     use pyo3::ffi;
@@ -80,21 +78,103 @@ mod elbo_sdk_rust {
     }
 
     #[derive(Debug)]
-    struct GroupMemoryViews {
+    struct AssetDataSlices {
         _shm: SharedMemory, // keep backing alive
+        uuids: *mut [u8],
         verts: *mut [u8],
         edges: *mut [u8],
-        rotations: *mut [u8],
-        scales: *mut [u8],
-        offsets: *mut [u8],
+        transforms: *mut [u8],
         vert_counts: *mut [u8],
         edge_counts: *mut [u8],
+        object_names: *mut [u8],
+    }
+
+    impl AssetDataSlices {
+        pub fn new(
+            shm: SharedMemory,
+            group_metadata: &com_types::AssetMeta,
+        ) -> Result<Self, String> {
+            let base_ptr = shm.base_address().as_ptr() as *mut u8;
+            let shm_size = shm.size();
+            let shm_slice: &mut [u8] =
+                unsafe { std::slice::from_raw_parts_mut(base_ptr, shm_size) };
+
+            let group_name = group_metadata.get_group_name(base_ptr);
+            let verts_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_verts,
+                (group_metadata.vert_count as usize) * 3 * size_of::<f32>(),
+                group_name,
+                "verts",
+            )?;
+
+            let edges_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_edges,
+                (group_metadata.edge_count as usize) * 2 * size_of::<u32>(),
+                group_name,
+                "edges",
+            )?;
+
+            let transforms_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_transforms,
+                (group_metadata.object_count as usize) * 16 * size_of::<f32>(),
+                group_name,
+                "transforms",
+            )?;
+
+            //+1 for total at the end
+            let vert_counts_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_vert_bases,
+                ((group_metadata.object_count) as usize) * size_of::<u32>(),
+                group_name,
+                "vert_counts",
+            )?;
+
+            //+1 for total at the end
+            let edge_counts_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_edge_bases,
+                ((group_metadata.object_count) as usize) * size_of::<u32>(),
+                group_name,
+                "edge_counts",
+            )?;
+
+            let object_names_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_object_names,
+                (group_metadata.object_count as usize) * MAX_NAME_LEN,
+                group_name,
+                "object_names",
+            )?;
+
+            let uuids_slice = shm_slice_from_range(
+                shm_slice,
+                group_metadata.offset_uuids,
+                (group_metadata.object_count as usize) * 16,
+                group_name,
+                "uuids",
+            )?;
+
+            Ok(AssetDataSlices {
+                _shm: shm,
+                verts: verts_slice,
+                edges: edges_slice,
+                transforms: transforms_slice,
+                vert_counts: vert_counts_slice,
+                edge_counts: edge_counts_slice,
+                object_names: object_names_slice,
+                uuids: uuids_slice,
+            })
+        }
     }
 
     #[pyclass(unsendable)]
     struct StandardizeGroupContext {
-        pub group_mvs: Vec<GroupMemoryViews>,
-        pub group_metadata_vec: Vec<com_types::GroupFull>,
+        pub group_mvs: Vec<AssetDataSlices>,
+        pub shm_offset_vec: Vec<com_types::ShmOffset>,
     }
 
     #[pymethods]
@@ -118,23 +198,22 @@ mod elbo_sdk_rust {
 
             let v = memoryview_from_slice(py, g.verts)?;
             let e = memoryview_from_slice(py, g.edges)?;
-            let r = memoryview_from_slice(py, g.rotations)?;
-            let s = memoryview_from_slice(py, g.scales)?;
-            let o = memoryview_from_slice(py, g.offsets)?;
+            let t = memoryview_from_slice(py, g.transforms)?;
             let vc = memoryview_from_slice(py, g.vert_counts)?;
             let ec = memoryview_from_slice(py, g.edge_counts)?;
+            let on = memoryview_from_slice(py, g.object_names)?;
+            let uu = memoryview_from_slice(py, g.uuids)?;
 
-            Ok((v, e, r, s, o, vc, ec))
+            Ok((v, e, t, vc, ec, on, uu))
         }
 
         fn finalize(&mut self) -> () {
-            let response = engine_api::standardize_groups_command(self.group_metadata_vec.clone())
+            let offsets = std::mem::take(&mut self.shm_offset_vec);
+            let response = engine_api::standardize_groups_command(offsets)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
             println!("Standardize Groups Response: {:?}", response);
         }
     }
-
-    /* inlined into `prepare_standardize_groups` below */
 
     #[pyfunction]
     fn prepare_standardize_groups(
@@ -142,28 +221,28 @@ mod elbo_sdk_rust {
         edge_counts: Vec<u32>,
         object_counts: Vec<u32>,
         group_names: Vec<String>,
-        surface_contexts: Vec<u32>,
+        surface_contexts: Vec<u16>,
     ) -> PyResult<StandardizeGroupContext> {
         let mut group_mvs = Vec::new();
-        let mut group_metadata_vec = Vec::new();
+        let mut shm_offset_vec = Vec::new();
 
         for i in 0..group_names.len() as usize {
-
             let (group_metadata, group_mv) = prepare_standardize_group(
                 &group_names[i],
                 vert_counts[i],
                 edge_counts[i],
                 object_counts[i],
                 surface_contexts[i],
-            )?;
+            )
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))?;
 
-            group_metadata_vec.push(group_metadata);
+            shm_offset_vec.push(group_metadata);
             group_mvs.push(group_mv);
         }
 
         Ok(StandardizeGroupContext {
             group_mvs,
-            group_metadata_vec,
+            shm_offset_vec,
         })
     }
 
@@ -172,109 +251,25 @@ mod elbo_sdk_rust {
         total_verts: u32,
         total_edges: u32,
         object_count: u32,
-        surface_contexts: u32,
-    ) -> PyResult<(com_types::GroupFull, GroupMemoryViews)> {
+        surface_contexts: u16,
+    ) -> Result<(com_types::ShmOffset, AssetDataSlices), String> {
         let handle_name = new_uid16();
 
-        let (size, group_metadata) = com_types::GroupFull::new(
+        let (shm, group_metadata) = com_types::AssetMeta::new(
             total_verts,
             total_edges,
             object_count,
             surface_contexts,
             &group_name,
             &handle_name,
-        );
-
-
-        let shm = create_shm_segment(
-            &handle_name,
-            size.try_into().expect(&format!(
-                "Mesh size {} exceeds system address space (usize)",
-                size
-            )),
         )
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "failed to create shared memory for group {}: {}",
-                group_name, e
-            ))
-        })?;
+        .map_err(|e| e.to_string())?;
 
-        let base_ptr = shm.base_address().as_ptr() as *mut u8;
-        let shm_size = shm.size();
-        let shm_slice: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(base_ptr, shm_size) };
+        let shm_offset = com_types::ShmOffset::new(0, handle_name);
+        let asset_data_slices =
+            AssetDataSlices::new(shm, &group_metadata).map_err(|e| e.to_string())?;
 
-        let verts_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_verts,
-            (total_verts as usize) * 3 * 4,
-            group_name,
-            "verts",
-        )?;
-
-        let edges_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_edges,
-            (total_edges as usize) * 2 * 4,
-            group_name,
-            "edges",
-        )?;
-
-        let rotations_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_rotations,
-            (group_metadata.object_count as usize) * 4 * 4,
-            group_name,
-            "rotations",
-        )?;
-
-        let scales_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_scales,
-            (group_metadata.object_count as usize) * 3 * 4,
-            group_name,
-            "scales",
-        )?;
-
-        let offsets_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_offsets,
-            (group_metadata.object_count as usize) * 3 * 4,
-            group_name,
-            "offsets",
-        )?;
-
-        //+1 for total at the end
-        let vert_counts_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_vert_counts,
-            ((group_metadata.object_count + 1) as usize) * 4,
-            group_name,
-            "vert_counts",
-        )?;
-
-        //+1 for total at the end
-        let edge_counts_slice = shm_slice_from_range(
-            shm_slice,
-            group_metadata.offset_edge_counts,
-            ((group_metadata.object_count + 1) as usize) * 4,
-            group_name,
-            "edge_counts",
-        )?;
-
-        Ok((
-            group_metadata,
-            GroupMemoryViews {
-                _shm: shm,
-                verts: verts_slice,
-                edges: edges_slice,
-                rotations: rotations_slice,
-                scales: scales_slice,
-                offsets: offsets_slice,
-                vert_counts: vert_counts_slice,
-                edge_counts: edge_counts_slice,
-            },
-        ))
+        Ok((shm_offset, asset_data_slices))
     }
 
     fn shm_slice_from_range(
@@ -283,26 +278,26 @@ mod elbo_sdk_rust {
         size: usize,
         group_name: &str,
         label: &str,
-    ) -> PyResult<*mut [u8]> {
+    ) -> Result<*mut [u8], String> {
         let total = shm_slice.len();
         let offset = usize::try_from(offset).map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "offset {} out of range for group '{}'",
-                offset, group_name
-            ))
+            format!(
+                "offset {} out of range for group '{}', label '{}'",
+                offset, group_name, label
+            )
         })?;
 
         if offset > total {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "offset {} out of range (len={}) for group '{}'",
-                offset, total, group_name
-            )));
+            return Err(format!(
+                "offset {} out of range (len={}) for group '{}', label '{}'",
+                offset, total, group_name, label
+            ));
         }
         if size > total - offset {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "requested size {} exceeds buffer for '{}' at offset {} (len={})",
-                size, label, offset, total
-            )));
+            return Err(format!(
+                "requested size {} exceeds buffer at offset {} (len={}) for group '{}', label '{}'",
+                size, offset, total, group_name, label
+            ));
         }
 
         let ptr = unsafe { shm_slice.as_mut_ptr().add(offset) };
@@ -331,64 +326,4 @@ mod elbo_sdk_rust {
         }
         out
     }
-
-    fn create_shm_segment(name: &str, size: usize) -> Result<SharedMemory, String> {
-        let file_name = FileName::new(name.as_bytes())
-            .map_err(|e| format!("invalid shared memory name '{}': {:?}", name, e))?;
-
-        SharedMemoryBuilder::new(&file_name)
-            .is_memory_locked(false)
-            .creation_mode(CreationMode::PurgeAndCreate)
-            .size(size)
-            .permission(Permission::OWNER_ALL | Permission::GROUP_ALL)
-            .zero_memory(true)
-            .create()
-            .map_err(|e| format!("failed to create shared memory '{}': {:?}", name, e))
-    }
-
-    // fn memoryview_from_shm(py: Python, shm: &mut SharedMemory) -> PyResult<Py<PyAny>> {
-    //     let slice = shm.as_mut_slice();
-    //     let ptr = slice.as_mut_ptr() as *mut c_char;
-    //     let len = slice.len() as isize;
-    //     let mv = unsafe { ffi::PyMemoryView_FromMemory(ptr, len, ffi::PyBUF_WRITE) };
-    //     if mv.is_null() {
-    //         return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-    //             "failed to create memoryview for shared memory",
-    //         ));
-    //     }
-    //     Ok(unsafe { Py::<PyAny>::from_owned_ptr(py, mv) })
-    // }
-
-    // fn memoryview_from_shm_range(
-    //     py: Python,
-    //     shm: &mut SharedMemory,
-    //     offset: usize,
-    //     size: usize,
-    // ) -> PyResult<Py<PyAny>> {
-    //     let slice = shm.as_mut_slice();
-    //     let total = slice.len();
-
-    //     if offset > total {
-    //         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-    //             "offset {} out of range (len={})",
-    //             offset, total
-    //         )));
-    //     }
-    //     if size > total - offset {
-    //         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-    //             "requested size {} exceeds buffer at offset {} (len={})",
-    //             size, offset, total
-    //         )));
-    //     }
-
-    //     let ptr = unsafe { slice.as_mut_ptr().add(offset) as *mut c_char };
-    //     let len = size as isize;
-    //     let mv = unsafe { ffi::PyMemoryView_FromMemory(ptr, len, ffi::PyBUF_WRITE) };
-    //     if mv.is_null() {
-    //         return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-    //             "failed to create memoryview for shared memory range",
-    //         ));
-    //     }
-    //     Ok(unsafe { Py::<PyAny>::from_owned_ptr(py, mv) })
-    // }
 }
