@@ -1,5 +1,7 @@
 use iceoryx2::prelude::*;
+use iceoryx2_bb_posix::shared_memory::SharedMemory;
 use pivot_com_types::{EngineCommand, EngineResponse};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -21,6 +23,7 @@ pub fn spawn_command_thread(
     shutdown: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<()> {
     thread::spawn(move || {
+
         let (service, notifier) = loop {
             let cmd_service = node
                 .service_builder(&COMMAND_SERVICE_NAME.try_into().unwrap())

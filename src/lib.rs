@@ -118,7 +118,6 @@ mod elbo_sdk_rust {
             let shm_offset = com_types::ShmOffset::new(0, handle_name);
             let asset_data_slices = AssetDataSlices::new(shm, &group_metadata)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
             shm_offsets.push(shm_offset);
             asset_slices.push(asset_data_slices);
         }

@@ -2,7 +2,7 @@ use pivot_com_types::com_types;
 use pyo3::{ffi, prelude::*};
 use std::os::raw::c_char;
 
-use crate::{asset_data_slices::AssetDataSlices, engine_api};
+use crate::{asset_data_slices::{self, AssetDataSlices}, engine_api};
 
 #[pyclass(unsendable)]
 pub struct AssetSyncContext {
@@ -38,6 +38,10 @@ impl AssetSyncContext {
         let uu = memoryview_from_slice(py, g.uuids)?;
 
         Ok((v, e, t, vc, ec, on, uu))
+    }
+
+    pub fn size(&self) -> usize {
+        self.asset_slices.len()
     }
 
     pub fn finalize(&mut self) -> () {

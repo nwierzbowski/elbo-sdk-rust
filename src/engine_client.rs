@@ -1,6 +1,8 @@
 use crossbeam::channel;
 use iceoryx2::prelude::*;
+use iceoryx2_bb_posix::shared_memory::SharedMemory;
 use pivot_com_types::{MAX_INLINE_DATA, MeshPublish, OP_STOP_ENGINE};
+use std::collections::HashMap;
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

@@ -3,7 +3,7 @@ use pivot_com_types::{MAX_NAME_LEN, com_types};
 
 #[derive(Debug)]
     pub struct AssetDataSlices {
-        _shm: SharedMemory, // keep backing alive
+        // _shm: SharedMemory, // keep backing alive
         pub uuids: *mut [u8],
         pub verts: *mut [u8],
         pub edges: *mut [u8],
@@ -20,6 +20,7 @@ use pivot_com_types::{MAX_NAME_LEN, com_types};
         ) -> Result<Self, String> {
             let base_ptr = shm.base_address().as_ptr() as *mut u8;
             let shm_size = shm.size();
+            std::mem::forget(shm);
             let shm_slice: &mut [u8] =
                 unsafe { std::slice::from_raw_parts_mut(base_ptr, shm_size) };
 
@@ -48,20 +49,20 @@ use pivot_com_types::{MAX_NAME_LEN, com_types};
                 "transforms",
             )?;
 
-            //+1 for total at the end
+            // +1 for total at the end
             let vert_counts_slice = shm_slice_from_range(
                 shm_slice,
                 group_metadata.offset_vert_bases,
-                ((group_metadata.object_count) as usize) * size_of::<u32>(),
+                ((group_metadata.object_count + 1) as usize) * size_of::<u32>(),
                 group_name,
                 "vert_counts",
             )?;
 
-            //+1 for total at the end
+            // +1 for total at the end
             let edge_counts_slice = shm_slice_from_range(
                 shm_slice,
                 group_metadata.offset_edge_bases,
-                ((group_metadata.object_count) as usize) * size_of::<u32>(),
+                ((group_metadata.object_count + 1) as usize) * size_of::<u32>(),
                 group_name,
                 "edge_counts",
             )?;
@@ -83,7 +84,7 @@ use pivot_com_types::{MAX_NAME_LEN, com_types};
             )?;
 
             Ok(AssetDataSlices {
-                _shm: shm,
+                // _shm: shm,
                 verts: verts_slice,
                 edges: edges_slice,
                 transforms: transforms_slice,
