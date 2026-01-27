@@ -1,4 +1,4 @@
-use pivot_com_types::AssetMeta;
+use pivot_com_types::MeshPublish;
 use pivot_com_types::ShmOffset;
 use pivot_com_types::com_types::EngineCommand;
 use pivot_com_types::com_types::EngineResponse;
@@ -11,11 +11,11 @@ use pivot_com_types::com_types::OP_ORGANIZE_OBJECTS;
 use pivot_com_types::com_types::OP_SET_SURFACE_TYPES;
 use pivot_com_types::com_types::OP_STANDARDIZE_GROUPS;
 use pivot_com_types::com_types::OP_STANDARDIZE_SYNCED_GROUPS;
+use crate::asset_data_slices::AssetDataSlices;
 use crate::engine_client::EngineClient;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
@@ -24,23 +24,36 @@ use std::sync::{LazyLock, Mutex};
 pub static CLIENT: LazyLock<EngineClient> = LazyLock::new(|| EngineClient::new());
 pub static ENGINE_DIR: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
 
-// Module-level singleton `CLIENT` is used below; `EngineClient` methods are
-// invoked directly from the free functions to avoid thin wrapper types.
-
-// Operation IDs used in `EngineCommand.op_id`.
-
 
 pub fn start_engine() -> Result<(), String> {
     let engine_path = resolve_engine_binary_path()
         .ok_or_else(|| "Failed to locate pivot_engine binary".to_string())?;
     CLIENT.start(engine_path.to_string_lossy().to_string())?;
-    CLIENT.listen_for_updates();
     Ok(())
 }
 
 pub fn stop_engine() -> Result<(), String> {
     CLIENT.stop()?;
     Ok(())
+}
+
+pub fn poll_mesh_sync() -> Result<Option<Vec<AssetDataSlices>>, String> {
+    let mp = match CLIENT.poll_mesh_sync() {
+        Ok(Some(mp)) => mp,
+        Ok(None) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+
+    let asset_ptrs = mp.get_meta_ptrs();
+    let mut asset_slices = Vec::new();
+
+    for (shm, group_metadata) in asset_ptrs {
+        let slice = unsafe { AssetDataSlices::new(shm, &*group_metadata)? };
+        asset_slices.push(slice);
+    }
+
+
+    Ok(Some(asset_slices))
 }
 
 pub fn standardize_groups_command(meta_vec: Vec<ShmOffset>) -> Result<EngineResponse, String> {
