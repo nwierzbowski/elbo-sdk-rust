@@ -1,7 +1,5 @@
 use iceoryx2::prelude::*;
-use iceoryx2_bb_posix::shared_memory::SharedMemory;
 use pivot_com_types::{EngineCommand, EngineResponse};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;

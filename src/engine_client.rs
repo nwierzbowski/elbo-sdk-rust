@@ -1,13 +1,10 @@
 use crossbeam::channel;
 use iceoryx2::prelude::*;
-use iceoryx2_bb_posix::shared_memory::SharedMemory;
-use pivot_com_types::{MAX_INLINE_DATA, MeshPublish, OP_STOP_ENGINE};
-use std::collections::HashMap;
+use pivot_com_types::{Buffer, EngineCommand, EngineResponse, MeshPublish, OP_STOP_ENGINE};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use pivot_com_types::com_types::{EngineCommand, EngineResponse};
 
 use crate::command_thread::{CommandWork, spawn_command_thread};
 use crate::mesh_sync_thread::spawn_mesh_sync_thread;
@@ -112,7 +109,7 @@ impl EngineClient {
             should_cache: 1,
             op_id: OP_STOP_ENGINE,
             num_groups: 0,
-            inline_data: [0; MAX_INLINE_DATA],
+            inline_data: Buffer::new(),
         };
         let res = self.send_command(command);
 

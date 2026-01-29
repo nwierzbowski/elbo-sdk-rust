@@ -1,13 +1,13 @@
-use pivot_com_types::com_types;
+use pivot_com_types::asset_ptr::AssetPtr;
 use pyo3::{ffi, prelude::*};
 use std::os::raw::c_char;
 
-use crate::{asset_data_slices::{self, AssetDataSlices}, engine_api};
+use crate::{asset_data_slices::{AssetDataSlices}, engine_api};
 
 #[pyclass(unsendable)]
 pub struct AssetSyncContext {
     pub asset_slices: Vec<AssetDataSlices>,
-    pub shm_offsets: Option<Vec<com_types::ShmOffset>>,
+    pub shm_offsets: Option<Vec<AssetPtr>>,
 }
 
 #[pymethods]
@@ -49,8 +49,7 @@ impl AssetSyncContext {
             Some(offsets) => offsets,
             None => return,
         };
-        let response = engine_api::standardize_groups_command(offsets)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
+        let response = engine_api::standardize_groups_command(offsets);
         println!("Standardize Groups Response: {:?}", response);
     }
 }

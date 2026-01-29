@@ -10,14 +10,15 @@ use pyo3::prelude::*;
 
 #[pymodule(name = "_elbo_sdk_rust")]
 mod elbo_sdk_rust {
+    use pivot_com_types::asset_meta::AssetMeta;
+    use pivot_com_types::asset_ptr::AssetPtr;
     use pyo3::prelude::*;
 
     use std::path::PathBuf;
 
-    use crate::asset_data_slices::{self, AssetDataSlices};
+    use crate::asset_data_slices::{AssetDataSlices};
     use crate::asset_sync_context::AssetSyncContext;
     use crate::engine_api;
-    use pivot_com_types::com_types;
 
     use rand::Rng;
 
@@ -105,7 +106,7 @@ mod elbo_sdk_rust {
         for i in 0..group_names.len() as usize {
             let handle_name = new_uid16();
 
-            let (shm, group_metadata) = com_types::AssetMeta::new(
+            let (shm, group_metadata) = AssetMeta::new(
                 vert_counts[i],
                 edge_counts[i],
                 object_counts[i],
@@ -115,7 +116,7 @@ mod elbo_sdk_rust {
             )
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-            let shm_offset = com_types::ShmOffset::new(0, handle_name);
+            let shm_offset = AssetPtr::new(0, handle_name);
             let asset_data_slices = AssetDataSlices::new(shm, &group_metadata)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
             shm_offsets.push(shm_offset);

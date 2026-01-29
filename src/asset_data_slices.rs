@@ -1,5 +1,5 @@
 use iceoryx2_bb_posix::shared_memory::SharedMemory;
-use pivot_com_types::{MAX_NAME_LEN, com_types};
+use pivot_com_types::{MAX_NAME_LEN, asset_meta::AssetMeta};
 
 #[derive(Debug)]
     pub struct AssetDataSlices {
@@ -16,7 +16,7 @@ use pivot_com_types::{MAX_NAME_LEN, com_types};
     impl AssetDataSlices {
         pub fn new(
             shm: SharedMemory,
-            group_metadata: &com_types::AssetMeta,
+            group_metadata: &AssetMeta,
         ) -> Result<Self, String> {
             let base_ptr = shm.base_address().as_ptr() as *mut u8;
             let shm_size = shm.size();

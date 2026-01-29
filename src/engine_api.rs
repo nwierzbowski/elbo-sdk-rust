@@ -1,16 +1,16 @@
-use pivot_com_types::MeshPublish;
-use pivot_com_types::ShmOffset;
-use pivot_com_types::com_types::EngineCommand;
-use pivot_com_types::com_types::EngineResponse;
-use pivot_com_types::com_types::GroupNames;
-use pivot_com_types::com_types::GroupSurface;
-use pivot_com_types::com_types::MAX_INLINE_DATA;
-use pivot_com_types::com_types::OP_DROP_GROUPS;
-use pivot_com_types::com_types::OP_GET_SURFACE_TYPES;
-use pivot_com_types::com_types::OP_ORGANIZE_OBJECTS;
-use pivot_com_types::com_types::OP_SET_SURFACE_TYPES;
-use pivot_com_types::com_types::OP_STANDARDIZE_GROUPS;
-use pivot_com_types::com_types::OP_STANDARDIZE_SYNCED_GROUPS;
+use pivot_com_types::Buffer;
+use pivot_com_types::EngineCommand;
+use pivot_com_types::EngineResponse;
+use pivot_com_types::OP_DROP_GROUPS;
+use pivot_com_types::OP_GET_SURFACE_TYPES;
+use pivot_com_types::OP_ORGANIZE_OBJECTS;
+use pivot_com_types::OP_SET_SURFACE_TYPES;
+use pivot_com_types::OP_STANDARDIZE_GROUPS;
+use pivot_com_types::OP_STANDARDIZE_SYNCED_GROUPS;
+use pivot_com_types::asset_names::GroupNames;
+use pivot_com_types::asset_ptr::AssetPtr;
+use pivot_com_types::asset_surface::GroupSurface;
+
 use crate::asset_data_slices::AssetDataSlices;
 use crate::engine_client::EngineClient;
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ pub fn poll_mesh_sync() -> Result<Option<Vec<AssetDataSlices>>, String> {
         Err(e) => return Err(e),
     };
 
-    let asset_ptrs = mp.get_meta_ptrs();
+    let asset_ptrs = mp.inline_data.to_asset_meta_ptr(mp.num_groups as usize);
     let mut asset_slices = Vec::new();
 
     for (shm, group_metadata) in asset_ptrs {
@@ -56,15 +56,15 @@ pub fn poll_mesh_sync() -> Result<Option<Vec<AssetDataSlices>>, String> {
     Ok(Some(asset_slices))
 }
 
-pub fn standardize_groups_command(meta_vec: Vec<ShmOffset>) -> Result<EngineResponse, String> {
+pub fn standardize_groups_command(meta_vec: Vec<AssetPtr>) -> Result<EngineResponse, String> {
     let mut command = EngineCommand {
         should_cache: 1,
         op_id: OP_STANDARDIZE_GROUPS,
         num_groups: meta_vec.len() as u32,
-        inline_data: [0; MAX_INLINE_DATA],
+        inline_data: Buffer::new(), 
     };
     
-    command.copy_payload_into_inline(&meta_vec);
+    command.inline_data.copy_payload(&meta_vec);
     
     CLIENT.send_command(command)
 }
@@ -91,10 +91,10 @@ pub fn standardize_synced_groups_command(
         should_cache: 1,
         op_id: OP_STANDARDIZE_SYNCED_GROUPS,
         num_groups: count,
-        inline_data: [0; MAX_INLINE_DATA],
+        inline_data: Buffer::new(),
     };
 
-    command.copy_payload_into_inline(&surface_vec);
+    command.inline_data.copy_payload(&surface_vec);
 
     CLIENT.send_command(command)
 }
@@ -120,10 +120,10 @@ pub fn set_surface_types_command(
         should_cache: 1,
         op_id: OP_SET_SURFACE_TYPES,
         num_groups: count,
-        inline_data: [0; MAX_INLINE_DATA],
+        inline_data: Buffer::new(),
     };
 
-    command.copy_payload_into_inline(&surface_vec);
+    command.inline_data.copy_payload(&surface_vec);
 
     CLIENT.send_command(command)
 }
@@ -146,10 +146,10 @@ pub fn drop_groups_command(group_names: Vec<String>) -> Result<EngineResponse, S
         should_cache: 1,
         op_id: OP_DROP_GROUPS,
         num_groups: count,
-        inline_data: [0; MAX_INLINE_DATA],
+        inline_data: Buffer::new(),
     };
 
-    command.copy_payload_into_inline(&name_vec);
+    command.inline_data.copy_payload(&name_vec);
 
     CLIENT.send_command(command)
 }
@@ -164,7 +164,7 @@ pub fn organize_objects_command() -> Result<EngineResponse, String> {
         should_cache: 1,
         op_id: OP_ORGANIZE_OBJECTS,
         num_groups: 0,
-        inline_data: [0; MAX_INLINE_DATA],
+        inline_data: Buffer::new(),
     };
 
     CLIENT.send_command(command)
@@ -180,7 +180,7 @@ pub fn get_surface_types_command() -> Result<EngineResponse, String> {
         should_cache: 1,
         op_id: OP_GET_SURFACE_TYPES,
         num_groups: 0,
-        inline_data: [0; MAX_INLINE_DATA],
+        inline_data: Buffer::new(),
     };
 
     CLIENT.send_command(command)
