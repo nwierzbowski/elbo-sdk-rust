@@ -19,6 +19,7 @@ iceoryx2-bb-container = "0.8.1"
 iceoryx2-loggers = {version = "0.8.1", features = ["std", "console"]}
 iceoryx2 = "0.8.1"
 crossbeam = "0.8"
+uuid = { version = "1.20", features = ["v4", "std"] }
 
-pivot-com-types = { git = "https://github.com/nwierzbowski/pivot-core.git", package = "pivot-com-types" }
+pivot-com-types = { git = "https://github.com/nwierzbowski/pivot-core.git", package = "pivot-com-types", features = ["pyo3"] }
 

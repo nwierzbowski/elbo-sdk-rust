@@ -1,10 +1,15 @@
 use crossbeam::channel;
 use iceoryx2::prelude::*;
+use iceoryx2_bb_posix::file::AccessMode;
+use iceoryx2_bb_posix::shared_memory::{SharedMemory, SharedMemoryBuilder};
+use pivot_com_types::alloc::SlabRegistry;
+use pivot_com_types::asset_meta::AssetMeta;
+use pivot_com_types::asset_ptr::AssetPtr;
 use pivot_com_types::{Buffer, EngineCommand, EngineResponse, MeshPublish, OP_STOP_ENGINE};
 use std::process::Child;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-
 
 use crate::command_thread::{CommandWork, spawn_command_thread};
 use crate::mesh_sync_thread::spawn_mesh_sync_thread;
@@ -16,7 +21,10 @@ struct ActiveState {
     mesh_update_rx: channel::Receiver<MeshPublish>,
     shutdown: Arc<AtomicBool>,
     threads: Vec<std::thread::JoinHandle<()>>,
+
+    slabs: Vec<SharedMemory>,
 }
+unsafe impl Send for ActiveState {}
 
 #[derive(Debug)]
 pub struct EngineClient {
@@ -85,7 +93,8 @@ impl EngineClient {
         let (mesh_update_tx, mesh_update_rx) = channel::unbounded::<MeshPublish>();
         let shutdown = Arc::new(AtomicBool::new(false));
         let command_thread = spawn_command_thread(self.node.clone(), command_rx, shutdown.clone());
-        let mesh_sync_thread = spawn_mesh_sync_thread(self.node.clone(), shutdown.clone(), mesh_update_tx);
+        let mesh_sync_thread =
+            spawn_mesh_sync_thread(self.node.clone(), shutdown.clone(), mesh_update_tx);
 
         *guard = Some(ActiveState {
             engine_process,
@@ -93,6 +102,7 @@ impl EngineClient {
             threads: vec![command_thread, mesh_sync_thread],
             shutdown: shutdown,
             mesh_update_rx,
+            slabs: Vec::new(),
         });
         Ok(())
     }
@@ -108,7 +118,7 @@ impl EngineClient {
         let command = EngineCommand {
             should_cache: 1,
             op_id: OP_STOP_ENGINE,
-            num_groups: 0,
+            num_headers: 0,
             inline_data: Buffer::new(),
         };
         let res = self.send_command(command);
@@ -136,4 +146,90 @@ impl EngineClient {
 
         Ok(())
     }
+
+    pub fn hydrate_ptrs(
+        &self,
+        asset_ptrs: &[AssetPtr],
+        root_handle: &[u8],
+    ) -> Result<Vec<NonNull<AssetMeta>>, String> {
+        let mut guard = self.state.lock().unwrap();
+        let state = guard.as_mut().expect("Engine not started");
+
+        if state.slabs.is_empty() {
+            state.slabs.push(open_shm(root_handle)?);
+        }
+
+        Self::ensure_slabs_synced(state); // Ensure that we have the correct number of slabs
+
+        let mut ptrs = Vec::with_capacity(asset_ptrs.len());
+
+        for asset_ptr in asset_ptrs {
+            let (slab_index, offset) = asset_ptr.unpack();
+
+            let shm = &state
+                .slabs
+                .get(slab_index as usize)
+                .ok_or_else(|| format!("Slab index {} is out of bounds", slab_index))?;
+
+            unsafe {
+                let raw_ptr = shm.base_address().as_ptr().add(offset as usize) as *mut AssetMeta;
+                ptrs.push(NonNull::new_unchecked(raw_ptr));
+            }
+        };
+
+        Ok(ptrs)
+        
+    }
+
+    fn ensure_slabs_synced(state: &mut ActiveState) {
+        let registry = unsafe { &*(state.slabs[0].base_address().as_ptr() as *const SlabRegistry) };
+        let target_count = registry.num_slabs as usize;
+
+        // If the Engine added a slab, Blender catches up here.
+        while state.slabs.len() < target_count {
+            let next_idx = state.slabs.len();
+            let handle = &registry.slab_handles[next_idx];
+
+            match open_shm(handle) {
+                Ok(shm) => {
+                    println!(
+                        "[SDK] Auto-mapped new memory slab [{}]: {:?}",
+                        next_idx,
+                        bytes_to_clean_str(handle)
+                    );
+                    state.slabs.push(shm);
+                }
+                Err(e) => {
+                    eprintln!("[SDK] Failed to map discovered slab: {}", e);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+pub fn bytes_to_clean_str(bytes: &[u8]) -> &[u8] {
+    // Look for the first null terminator, or use the whole slice if none found
+    let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    &bytes[..len]
+}
+
+fn open_shm(handle: &[u8]) -> Result<SharedMemory, String> {
+    let clean_handle = bytes_to_clean_str(handle);
+    let file_name = match FileName::new(clean_handle) {
+        Ok(f) => f,
+        Err(e) => {
+            return Err(format!(
+                "invalid shared memory name '{:?}': {:?}",
+                clean_handle, e
+            ));
+        }
+    };
+
+    let shm = {
+        SharedMemoryBuilder::new(&file_name)
+            .open_existing(AccessMode::ReadWrite)
+            .expect("Failed to open shm")
+    };
+    Ok(shm)
 }

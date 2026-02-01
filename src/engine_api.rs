@@ -7,23 +7,26 @@ use pivot_com_types::OP_ORGANIZE_OBJECTS;
 use pivot_com_types::OP_SET_SURFACE_TYPES;
 use pivot_com_types::OP_STANDARDIZE_GROUPS;
 use pivot_com_types::OP_STANDARDIZE_SYNCED_GROUPS;
-use pivot_com_types::asset_names::GroupNames;
+use pivot_com_types::alloc::AllocRequestMeta;
+use pivot_com_types::asset_meta::AssetMeta;
 use pivot_com_types::asset_ptr::AssetPtr;
 use pivot_com_types::asset_surface::GroupSurface;
+use pivot_com_types::fields::Uuid;
 
 use crate::asset_data_slices::AssetDataSlices;
 use crate::engine_client::EngineClient;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::iter::zip;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::ptr::copy_nonoverlapping;
 use std::sync::{LazyLock, Mutex};
-
+use uuid::Uuid as ExternalUuid;
 
 pub static CLIENT: LazyLock<EngineClient> = LazyLock::new(|| EngineClient::new());
 pub static ENGINE_DIR: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
-
 
 pub fn start_engine() -> Result<(), String> {
     let engine_path = resolve_engine_binary_path()
@@ -37,6 +40,11 @@ pub fn stop_engine() -> Result<(), String> {
     Ok(())
 }
 
+pub fn generate_uuid_bytes() -> [u8; 16] {
+    let ptr = ExternalUuid::new_v4().as_bytes().as_ptr() as *const [u8; 16];
+    unsafe { *ptr }
+}
+
 pub fn poll_mesh_sync() -> Result<Option<Vec<AssetDataSlices>>, String> {
     let mp = match CLIENT.poll_mesh_sync() {
         Ok(Some(mp)) => mp,
@@ -44,33 +52,87 @@ pub fn poll_mesh_sync() -> Result<Option<Vec<AssetDataSlices>>, String> {
         Err(e) => return Err(e),
     };
 
-    let asset_ptrs = mp.inline_data.to_asset_meta_ptr(mp.num_groups as usize);
-    let mut asset_slices = Vec::new();
+    let asset_ptrs = mp
+        .inline_data
+        .to_asset_meta_ptr(mp.header.num_items as usize);
+    let ptrs = CLIENT.hydrate_ptrs(&asset_ptrs, &mp.header.root_slab_handle)?;
 
-    for (shm, group_metadata) in asset_ptrs {
-        let slice = unsafe { AssetDataSlices::new(shm, &*group_metadata)? };
+    let mut asset_slices = Vec::new();
+    for ptr in ptrs {
+        let slice = AssetDataSlices::new(ptr)?;
         asset_slices.push(slice);
     }
 
-
     Ok(Some(asset_slices))
+}
+
+pub fn allocate_memory(
+    vert_counts: Vec<u32>,
+    edge_counts: Vec<u32>,
+    object_counts: Vec<u32>,
+    group_names: Vec<String>,
+    surface_contexts: Vec<u16>,
+    asset_uuids: Vec<Uuid>,
+) -> Result<(Vec<AssetDataSlices>, Vec<AssetPtr>), String> {
+    let count = asset_uuids.len();
+
+    let mut asset_slices = Vec::with_capacity(count);
+    let mut sizes = Vec::with_capacity(count);
+    let mut asset_metas = Vec::with_capacity(count);
+
+    for i in 0..count as usize {
+        // let handle_name = new_uid16();
+
+        let (group_metadata, total_size) = AssetMeta::new(
+            vert_counts[i],
+            edge_counts[i],
+            object_counts[i],
+            surface_contexts[i],
+            &group_names[i],
+            asset_uuids[i],
+        )?;
+
+        asset_metas.push(group_metadata);
+        sizes.push(total_size);
+        // let asset_ptr = AssetPtr::new(0, handle_name);
+    }
+
+    let resp = request_memory_allocation(&asset_uuids, &sizes)?;
+
+    let (_uuids, asset_ptrs) = resp.inline_data.to_alloc_response();
+
+    let ptrs = CLIENT.hydrate_ptrs(&asset_ptrs, &resp.header.root_slab_handle)?;
+
+    for ((mut ptr, asset_meta), group_name) in zip(ptrs, asset_metas).zip(group_names) {
+        //Copy the AssetMeta into the shared memory
+        unsafe {
+            copy_nonoverlapping(&asset_meta, ptr.as_ptr() as *mut AssetMeta, 1);
+            ptr.write(asset_meta);
+            ptr.as_mut().write_group_name(&group_name);
+        };
+
+        let asset_data_slices = AssetDataSlices::new(ptr)?;
+        // asset_ptrs.push(asset_ptr);
+        asset_slices.push(asset_data_slices);
+    }
+    Ok((asset_slices, asset_ptrs.to_vec()))
 }
 
 pub fn standardize_groups_command(meta_vec: Vec<AssetPtr>) -> Result<EngineResponse, String> {
     let mut command = EngineCommand {
         should_cache: 1,
         op_id: OP_STANDARDIZE_GROUPS,
-        num_groups: meta_vec.len() as u32,
-        inline_data: Buffer::new(), 
+        num_headers: meta_vec.len() as u32,
+        inline_data: Buffer::new(),
     };
-    
-    command.inline_data.copy_payload(&meta_vec);
-    
+
+    command.inline_data.copy_payload(&meta_vec, 0);
+
     CLIENT.send_command(command)
 }
 
 pub fn standardize_synced_groups_command(
-    group_names: Vec<String>,
+    uuids: Vec<Uuid>,
     surface_types: Vec<u32>,
 ) -> Result<EngineResponse, String> {
     // let command = json!({
@@ -79,34 +141,34 @@ pub fn standardize_synced_groups_command(
     //     "group_names": group_names,
     //     "surface_contexts": surface_contexts,
     // });
-    let count = group_names.len() as u32;
+    let count = uuids.len() as u32;
     let mut surface_vec: Vec<GroupSurface> = Vec::with_capacity(count as usize);
 
     for i in 0..count as usize {
-        let surf = GroupSurface::new(&group_names[i], surface_types[i] as u64);
+        let surf = GroupSurface::new(uuids[i], surface_types[i] as u64);
         surface_vec.push(surf);
     }
 
     let mut command = EngineCommand {
         should_cache: 1,
         op_id: OP_STANDARDIZE_SYNCED_GROUPS,
-        num_groups: count,
+        num_headers: count,
         inline_data: Buffer::new(),
     };
 
-    command.inline_data.copy_payload(&surface_vec);
+    command.inline_data.copy_payload(&surface_vec, 0);
 
     CLIENT.send_command(command)
 }
 
 pub fn set_surface_types_command(
-    group_surface_map: HashMap<String, i64>,
+    group_surface_map: HashMap<Uuid, i64>,
 ) -> Result<EngineResponse, String> {
     let count = group_surface_map.len() as u32;
     let mut surface_vec: Vec<GroupSurface> = Vec::with_capacity(count as usize);
 
-    group_surface_map.iter().for_each(|(name, surface_type)| {
-        let surf = GroupSurface::new(name, *surface_type as u64);
+    group_surface_map.iter().for_each(|(uuid, surface_type)| {
+        let surf = GroupSurface::new(*uuid, *surface_type as u64);
         surface_vec.push(surf);
     });
 
@@ -119,37 +181,36 @@ pub fn set_surface_types_command(
     let mut command = EngineCommand {
         should_cache: 1,
         op_id: OP_SET_SURFACE_TYPES,
-        num_groups: count,
+        num_headers: count,
         inline_data: Buffer::new(),
     };
 
-    command.inline_data.copy_payload(&surface_vec);
+    command.inline_data.copy_payload(&surface_vec, 0);
 
     CLIENT.send_command(command)
 }
 
-pub fn drop_groups_command(group_names: Vec<String>) -> Result<EngineResponse, String> {
-
+pub fn drop_groups_command(uuids: Vec<Uuid>) -> Result<EngineResponse, String> {
     // let command = json!({
     //     "id": COMMAND_DROP_GROUPS,
     //     "op": "drop_groups",
     //     "group_names": group_names
     // });
-    let count = group_names.len() as u32;
-    let mut name_vec: Vec<GroupNames> = Vec::with_capacity(count as usize);
+    let count = uuids.len() as u32;
+    let mut uuid_vec: Vec<Uuid> = Vec::with_capacity(count as usize);
 
-    group_names.iter().for_each(|name| {
-        name_vec.push(GroupNames::new(name));
+    uuids.iter().for_each(|uuid| {
+        uuid_vec.push(*uuid);
     });
 
     let mut command = EngineCommand {
         should_cache: 1,
         op_id: OP_DROP_GROUPS,
-        num_groups: count,
+        num_headers: count,
         inline_data: Buffer::new(),
     };
 
-    command.inline_data.copy_payload(&name_vec);
+    command.inline_data.copy_payload(&uuid_vec, 0);
 
     CLIENT.send_command(command)
 }
@@ -163,7 +224,7 @@ pub fn organize_objects_command() -> Result<EngineResponse, String> {
     let command = EngineCommand {
         should_cache: 1,
         op_id: OP_ORGANIZE_OBJECTS,
-        num_groups: 0,
+        num_headers: 0,
         inline_data: Buffer::new(),
     };
 
@@ -179,10 +240,34 @@ pub fn get_surface_types_command() -> Result<EngineResponse, String> {
     let command = EngineCommand {
         should_cache: 1,
         op_id: OP_GET_SURFACE_TYPES,
-        num_groups: 0,
+        num_headers: 0,
         inline_data: Buffer::new(),
     };
 
+    CLIENT.send_command(command)
+}
+
+pub fn request_memory_allocation(
+    uuids: &[Uuid],
+    sizes: &[usize],
+) -> Result<EngineResponse, String> {
+    let mut command = EngineCommand {
+        should_cache: 1,
+        op_id: pivot_com_types::OP_ALLOC_MEM,
+        num_headers: 1,
+        inline_data: Buffer::new(),
+    };
+
+    println!(
+        "[Engine API] Requesting memory allocation for {} assets",
+        uuids.len()
+    );
+
+    let req = AllocRequestMeta::new(uuids.len() as u64);
+
+    command.inline_data.copy_payload(&[req], 0);
+    command.inline_data.copy_payload(uuids, req.offset_uuids);
+    command.inline_data.copy_payload(sizes, req.offset_sizes);
     CLIENT.send_command(command)
 }
 

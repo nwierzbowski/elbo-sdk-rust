@@ -7,7 +7,7 @@ use crate::{asset_data_slices::{AssetDataSlices}, engine_api};
 #[pyclass(unsendable)]
 pub struct AssetSyncContext {
     pub asset_slices: Vec<AssetDataSlices>,
-    pub shm_offsets: Option<Vec<AssetPtr>>,
+    pub asset_ptrs: Option<Vec<AssetPtr>>,
 }
 
 #[pymethods]
@@ -35,9 +35,9 @@ impl AssetSyncContext {
         let vc = memoryview_from_slice(py, g.vert_counts)?;
         let ec = memoryview_from_slice(py, g.edge_counts)?;
         let on = memoryview_from_slice(py, g.object_names)?;
-        let uu = memoryview_from_slice(py, g.uuids)?;
+        let obj_uuids = memoryview_from_slice(py, g.obj_uuids)?;
 
-        Ok((v, e, t, vc, ec, on, uu))
+        Ok((v, e, t, vc, ec, on, obj_uuids))
     }
 
     pub fn size(&self) -> usize {
@@ -45,12 +45,12 @@ impl AssetSyncContext {
     }
 
     pub fn finalize(&mut self) -> () {
-        let offsets = match std::mem::take(&mut self.shm_offsets) {
-            Some(offsets) => offsets,
+        let ptrs = match std::mem::take(&mut self.asset_ptrs) {
+            Some(ptrs) => ptrs,
             None => return,
         };
-        let response = engine_api::standardize_groups_command(offsets);
-        println!("Standardize Groups Response: {:?}", response);
+        let response = engine_api::standardize_groups_command(ptrs);
+        // println!("Standardize Groups Response: {:?}", response);
     }
 }
 
