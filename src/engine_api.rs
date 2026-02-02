@@ -103,13 +103,23 @@ pub fn allocate_memory(
 
     let ptrs = CLIENT.hydrate_ptrs(&asset_ptrs, &resp.header.root_slab_handle)?;
 
-    for ((mut ptr, asset_meta), group_name) in zip(ptrs, asset_metas).zip(group_names) {
-        //Copy the AssetMeta into the shared memory
+    for ((ptr, asset_meta), group_name) in zip(ptrs, asset_metas).zip(group_names) {
+        // Copy the AssetMeta into the shared memory
         unsafe {
-            copy_nonoverlapping(&asset_meta, ptr.as_ptr() as *mut AssetMeta, 1);
-            ptr.write(asset_meta);
-            ptr.as_mut().write_group_name(&group_name);
-        };
+        // 1. Write the struct to SHM (Use unaligned to be safe in SHM)
+        let raw_ptr = ptr.as_ptr();
+        let base_bytes = raw_ptr as *mut u8;
+        let name_dest = base_bytes.add(asset_meta.offset_group_name as usize);
+        std::ptr::write_unaligned(raw_ptr, asset_meta);
+    
+        
+        
+        std::ptr::copy_nonoverlapping(
+            group_name.as_ptr(),
+            name_dest,
+            group_name.len()
+        );
+    };
 
         let asset_data_slices = AssetDataSlices::new(ptr)?;
         // asset_ptrs.push(asset_ptr);

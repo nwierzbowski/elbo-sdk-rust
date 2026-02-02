@@ -630,7 +630,7 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "pivot-com-types"
 version = "0.1.0"
-source = "git+https://github.com/nwierzbowski/pivot-core.git#76c0b04aca8a0ebee26c01ed09631e2944c3181d"
+source = "git+https://github.com/nwierzbowski/pivot-core.git#cfbd634314c73fc83008058f5de6cd3afaf7ffaf"
 dependencies = [
  "bytemuck",
  "iceoryx2",

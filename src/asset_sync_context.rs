@@ -50,6 +50,10 @@ impl AssetSyncContext {
             None => return,
         };
         let response = engine_api::standardize_groups_command(ptrs);
+
+        if response.is_err() {
+            println!("{:?}", response.err());
+        }
         // println!("Standardize Groups Response: {:?}", response);
     }
 }
