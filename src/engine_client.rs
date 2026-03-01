@@ -147,6 +147,8 @@ impl EngineClient {
         Ok(())
     }
 
+    ///Takes asset ptrs and hydrates them into local pointers into shared memory for AssetMetas
+    /// If we dont have any slabs registered yet we use the root_handle as the slab registry is the first address there
     pub fn hydrate_ptrs(
         &self,
         asset_ptrs: &[AssetPtr],
@@ -155,6 +157,7 @@ impl EngineClient {
         let mut guard = self.state.lock().unwrap();
         let state = guard.as_mut().expect("Engine not started");
 
+        //If this is engine startup we open the root shm which contains the slab registry for later syncing
         if state.slabs.is_empty() {
             state.slabs.push(open_shm(root_handle)?);
         }
@@ -181,6 +184,7 @@ impl EngineClient {
         
     }
 
+    ///Checks the returned number of slabs and opens the ones at the end of the list until we have the correct ones open as the engine will only ever create new ones at the end
     fn ensure_slabs_synced(state: &mut ActiveState) {
         let registry = unsafe { &*(state.slabs[0].base_address().as_ptr() as *const SlabRegistry) };
         let target_count = registry.num_slabs as usize;
@@ -214,6 +218,7 @@ pub fn bytes_to_clean_str(bytes: &[u8]) -> &[u8] {
     &bytes[..len]
 }
 
+///Opens existing shm by u8 handle
 fn open_shm(handle: &[u8]) -> Result<SharedMemory, String> {
     let clean_handle = bytes_to_clean_str(handle);
     let file_name = match FileName::new(clean_handle) {

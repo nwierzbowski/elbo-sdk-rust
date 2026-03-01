@@ -66,6 +66,7 @@ pub fn poll_mesh_sync() -> Result<Option<Vec<AssetDataSlices>>, String> {
     Ok(Some(asset_slices))
 }
 
+///Requests memory for the provided asset mettadata and writes the group names and asset mettas into the correct places
 pub fn allocate_memory(
     vert_counts: Vec<u32>,
     edge_counts: Vec<u32>,
@@ -80,6 +81,7 @@ pub fn allocate_memory(
     let mut sizes = Vec::with_capacity(count);
     let mut asset_metas = Vec::with_capacity(count);
 
+    //Calculate the asset metta (offsets) and accumulate them to request memory from engine
     for i in 0..count as usize {
         // let handle_name = new_uid16();
 
@@ -99,28 +101,27 @@ pub fn allocate_memory(
 
     let resp = request_memory_allocation(&asset_uuids, &sizes)?;
 
+    //Get the asset ptrs from the memory alloc reponse
     let (_uuids, asset_ptrs) = resp.inline_data.to_alloc_response();
 
+    //Convert the provided asset ptrs to real local ptrs
     let ptrs = CLIENT.hydrate_ptrs(&asset_ptrs, &resp.header.root_slab_handle)?;
 
+    //Write group names and meta datas into the provided memory
     for ((ptr, asset_meta), group_name) in zip(ptrs, asset_metas).zip(group_names) {
         // Copy the AssetMeta into the shared memory
         unsafe {
-        // 1. Write the struct to SHM (Use unaligned to be safe in SHM)
-        let raw_ptr = ptr.as_ptr();
-        let base_bytes = raw_ptr as *mut u8;
-        let name_dest = base_bytes.add(asset_meta.offset_group_name as usize);
-        std::ptr::write_unaligned(raw_ptr, asset_meta);
-    
-        
-        
-        std::ptr::copy_nonoverlapping(
-            group_name.as_ptr(),
-            name_dest,
-            group_name.len()
-        );
-    };
+            let raw_ptr = ptr.as_ptr();
+            let base_bytes = raw_ptr as *mut u8;
+            let name_dest = base_bytes.add(asset_meta.offset_group_name as usize);
+            //Write name into memory
+            std::ptr::write_unaligned(raw_ptr, asset_meta);
 
+            //Copy meta into memory
+            std::ptr::copy_nonoverlapping(group_name.as_ptr(), name_dest, group_name.len());
+        };
+
+        //Constructs slices over each of the data parts
         let asset_data_slices = AssetDataSlices::new(ptr)?;
         // asset_ptrs.push(asset_ptr);
         asset_slices.push(asset_data_slices);

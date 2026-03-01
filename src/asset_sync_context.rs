@@ -54,7 +54,6 @@ impl AssetSyncContext {
         if response.is_err() {
             println!("{:?}", response.err());
         }
-        // println!("Standardize Groups Response: {:?}", response);
     }
 }
 

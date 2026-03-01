@@ -10,19 +10,11 @@ use pyo3::prelude::*;
 
 #[pymodule(name = "_elbo_sdk_rust")]
 mod elbo_sdk_rust {
-    use pivot_com_types::asset_meta::AssetMeta;
-    use pivot_com_types::asset_ptr::AssetPtr;
     use pivot_com_types::fields::Uuid;
     use pyo3::prelude::*;
-
-    use std::iter::zip;
     use std::path::PathBuf;
-
-    use crate::asset_data_slices::AssetDataSlices;
     use crate::asset_sync_context::AssetSyncContext;
     use crate::engine_api;
-
-    use rand::Rng;
 
     #[pyfunction]
     fn start_engine() -> PyResult<()> {
@@ -127,15 +119,4 @@ mod elbo_sdk_rust {
     fn generate_uuid_bytes() -> PyResult<[u8; 16]> {
         Ok(engine_api::generate_uuid_bytes())
     }
-
-    // fn new_uid16() -> String {
-    //     const HEX: &[u8; 16] = b"0123456789abcdef";
-    //     let mut rng = rand::thread_rng();
-    //     let mut out = String::with_capacity(16);
-    //     for _ in 0..16 {
-    //         let idx = rng.gen_range(0..16);
-    //         out.push(HEX[idx] as char);
-    //     }
-    //     out
-    // }
 }

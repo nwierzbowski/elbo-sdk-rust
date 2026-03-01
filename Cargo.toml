@@ -21,5 +21,5 @@ iceoryx2 = "0.8.1"
 crossbeam = "0.8"
 uuid = { version = "1.20", features = ["v4", "std"] }
 
-pivot-com-types = { git = "https://github.com/nwierzbowski/pivot-core.git", package = "pivot-com-types", features = ["pyo3"] }
+pivot-com-types = { path = "../core/pivot-com-types", package = "pivot-com-types", features = ["pyo3"] }
 
