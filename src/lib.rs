@@ -1,4 +1,3 @@
-mod asset_data_slices;
 mod asset_sync_context;
 mod command_thread;
 mod engine_api;
@@ -94,6 +93,8 @@ mod elbo_sdk_rust {
     fn prepare_standardize_groups(
         vert_counts: Vec<u32>,
         edge_counts: Vec<u32>,
+        loop_counts: Vec<u32>,
+        total_loop_lengths: Vec<u32>,
         object_counts: Vec<u32>,
         group_names: Vec<String>,
         surface_contexts: Vec<u16>,
@@ -102,6 +103,8 @@ mod elbo_sdk_rust {
         let (asset_slices, asset_ptrs) = engine_api::allocate_memory(
             vert_counts,
             edge_counts,
+            loop_counts,
+            total_loop_lengths,
             object_counts,
             group_names,
             surface_contexts,

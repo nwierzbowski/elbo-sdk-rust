@@ -1,8 +1,10 @@
-use pivot_com_types::asset_ptr::AssetPtr;
+use pivot_com_types::{asset_meta::AssetDataSlices, asset_ptr::AssetPtr};
 use pyo3::{ffi, prelude::*};
 use std::os::raw::c_char;
 
-use crate::{asset_data_slices::{AssetDataSlices}, engine_api};
+use crate::engine_api;
+
+
 
 #[pyclass(unsendable)]
 pub struct AssetSyncContext {
@@ -29,13 +31,14 @@ impl AssetSyncContext {
             PyErr::new::<pyo3::exceptions::PyIndexError, _>(format!("index {} out of range", i))
         })?;
 
-        let v = memoryview_from_slice(py, g.verts)?;
-        let e = memoryview_from_slice(py, g.edges)?;
-        let t = memoryview_from_slice(py, g.transforms)?;
-        let vc = memoryview_from_slice(py, g.vert_counts)?;
-        let ec = memoryview_from_slice(py, g.edge_counts)?;
-        let on = memoryview_from_slice(py, g.object_names)?;
-        let obj_uuids = memoryview_from_slice(py, g.obj_uuids)?;
+        // Tuple order: (obj_uuids, verts, edges, loops, loop_bases, object_loop_counts, transforms, vert_counts, edge_counts, object_names)
+        let obj_uuids = memoryview_from_slice(py, g.0)?;
+        let v = memoryview_from_slice(py, g.1)?;
+        let e = memoryview_from_slice(py, g.2)?;
+        let t = memoryview_from_slice(py, g.6)?;
+        let vc = memoryview_from_slice(py, g.7)?;
+        let ec = memoryview_from_slice(py, g.8)?;
+        let on = memoryview_from_slice(py, g.9)?;
 
         Ok((v, e, t, vc, ec, on, obj_uuids))
     }

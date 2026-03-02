@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional
 
 
 def start_engine() -> None: ...
@@ -31,6 +31,8 @@ def poll_mesh_sync() -> Optional["AssetSyncContext"]: ...
 def prepare_standardize_groups(
     vert_counts: List[int],
     edge_counts: List[int],
+    loop_counts: List[int],
+    total_loop_lengths: List[int],
     object_counts: List[int],
     group_names: List[str],
     surface_contexts: List[int],
