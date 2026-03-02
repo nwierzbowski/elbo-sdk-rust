@@ -38,6 +38,9 @@ impl AssetSyncContext {
         Py<PyAny>,
         Py<PyAny>,
         Py<PyAny>,
+        Py<PyAny>,
+        Py<PyAny>,
+        Py<PyAny>,
     )> {
         let g = self.asset_slices.get(i).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyIndexError, _>(format!("index {} out of range", i))
@@ -45,14 +48,17 @@ impl AssetSyncContext {
 
         // Tuple order: (obj_uuids, verts, edges, loops, loop_bases, object_loop_counts, transforms, vert_counts, edge_counts, object_names)
         let obj_uuids = memoryview_from_slice(py, g.0)?;
-        let v = memoryview_from_slice(py, g.1)?;
-        let e = memoryview_from_slice(py, g.2)?;
-        let t = memoryview_from_slice(py, g.6)?;
-        let vc = memoryview_from_slice(py, g.7)?;
-        let ec = memoryview_from_slice(py, g.8)?;
-        let on = memoryview_from_slice(py, g.9)?;
+        let verts = memoryview_from_slice(py, g.1)?;
+        let edges = memoryview_from_slice(py, g.2)?;
+        let loops = memoryview_from_slice(py, g.3)?;
+        let loop_bases = memoryview_from_slice(py, g.4)?;
+        let object_loop_counts = memoryview_from_slice(py, g.5)?;
+        let transforms = memoryview_from_slice(py, g.6)?;
+        let vert_counts = memoryview_from_slice(py, g.7)?;
+        let edge_counts = memoryview_from_slice(py, g.8)?;
+        let object_names = memoryview_from_slice(py, g.9)?;
 
-        Ok((v, e, t, vc, ec, on, obj_uuids))
+        Ok((verts, edges, loops, loop_bases, object_loop_counts, transforms, vert_counts, edge_counts, object_names, obj_uuids))
     }
 
     pub fn size(&self) -> usize {

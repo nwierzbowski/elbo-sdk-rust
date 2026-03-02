@@ -9,11 +9,11 @@ use pyo3::prelude::*;
 
 #[pymodule(name = "_elbo_sdk_rust")]
 mod elbo_sdk_rust {
+    use crate::asset_sync_context::AssetSyncContext;
+    use crate::engine_api;
     use pivot_com_types::fields::Uuid;
     use pyo3::prelude::*;
     use std::path::PathBuf;
-    use crate::asset_sync_context::AssetSyncContext;
-    use crate::engine_api;
 
     #[pyfunction]
     fn start_engine() -> PyResult<()> {
@@ -28,10 +28,7 @@ mod elbo_sdk_rust {
     }
 
     #[pyfunction]
-    fn standardize_synced_groups_command(
-        uuids: Vec<Uuid>,
-        surface_contexts: Vec<u32>,
-    ) -> () {
+    fn standardize_synced_groups_command(uuids: Vec<Uuid>, surface_contexts: Vec<u32>) -> () {
         let _ = engine_api::standardize_synced_groups_command(uuids, surface_contexts)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }

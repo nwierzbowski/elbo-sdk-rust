@@ -72,13 +72,11 @@ pub fn allocate_memory(
 ) -> Result<AssetSyncContext, String> {
     let count = asset_uuids.len();
 
-    // let mut asset_slices = Vec::with_capacity(count);
     let mut sizes = Vec::with_capacity(count);
     let mut asset_metas = Vec::with_capacity(count);
 
     //Calculate the asset metta (offsets) and accumulate them to request memory from engine
     for i in 0..count as usize {
-        // let handle_name = new_uid16();
 
         let (group_metadata, total_size) = AssetMeta::new(
             vert_counts[i],
@@ -111,10 +109,10 @@ pub fn allocate_memory(
             let raw_ptr = ptr.as_ptr();
             let base_bytes = raw_ptr as *mut u8;
             let name_dest = base_bytes.add(asset_meta.offset_group_name as usize);
-            //Write name into memory
+            //Write meta into memory
             std::ptr::write_unaligned(raw_ptr, asset_meta);
 
-            //Copy meta into memory
+            //Copy name into memory
             std::ptr::copy_nonoverlapping(group_name.as_ptr(), name_dest, group_name.len());
         };
     }
