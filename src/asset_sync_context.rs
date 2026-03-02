@@ -1,26 +1,30 @@
-use pivot_com_types::{asset_meta::{AssetDataSlices, AssetMeta}, asset_ptr::AssetPtr};
+use pivot_com_types::{
+    asset_meta::{AssetDataSlices, AssetMeta},
+    asset_ptr::AssetPtr,
+};
 use pyo3::{ffi, prelude::*};
 use std::{os::raw::c_char, ptr::NonNull};
 
 use crate::engine_api;
 
-
-
 #[pyclass(unsendable)]
 pub struct AssetSyncContext {
     asset_slices: Vec<AssetDataSlices>,
-    asset_ptrs: Option<Vec<AssetPtr>>,
+    asset_ptrs: Vec<AssetPtr>,
 }
 
 impl AssetSyncContext {
-    pub fn new(ptrs: Vec<NonNull<AssetMeta>>, asset_ptrs:  &[AssetPtr]) -> AssetSyncContext {
+    pub fn new(ptrs: Vec<NonNull<AssetMeta>>, asset_ptrs: &[AssetPtr]) -> AssetSyncContext {
         let mut asset_slices = Vec::with_capacity(ptrs.len());
 
         for mut ptr in ptrs {
-            asset_slices.push(unsafe{ ptr.as_mut().get_slices()})
-        };
+            asset_slices.push(unsafe { ptr.as_mut().get_slices() })
+        }
 
-        AssetSyncContext { asset_slices, asset_ptrs: Some(asset_ptrs.to_vec()) }
+        AssetSyncContext {
+            asset_slices,
+            asset_ptrs: asset_ptrs.to_vec(),
+        }
     }
 }
 
@@ -58,7 +62,18 @@ impl AssetSyncContext {
         let edge_counts = memoryview_from_slice(py, g.8)?;
         let object_names = memoryview_from_slice(py, g.9)?;
 
-        Ok((verts, edges, loops, loop_bases, object_loop_counts, transforms, vert_counts, edge_counts, object_names, obj_uuids))
+        Ok((
+            verts,
+            edges,
+            loops,
+            loop_bases,
+            object_loop_counts,
+            transforms,
+            vert_counts,
+            edge_counts,
+            object_names,
+            obj_uuids,
+        ))
     }
 
     pub fn size(&self) -> usize {
@@ -66,11 +81,7 @@ impl AssetSyncContext {
     }
 
     pub fn finalize(&mut self) -> () {
-        let ptrs = match std::mem::take(&mut self.asset_ptrs) {
-            Some(ptrs) => ptrs,
-            None => return,
-        };
-        let response = engine_api::standardize_groups_command(ptrs);
+        let response = engine_api::standardize_groups_command(std::mem::take(&mut self.asset_ptrs));
 
         if response.is_err() {
             println!("{:?}", response.err());
