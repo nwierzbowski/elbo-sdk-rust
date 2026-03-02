@@ -80,8 +80,9 @@ impl AssetSyncContext {
         self.asset_slices.len()
     }
 
-    pub fn finalize(&mut self) -> () {
-        let response = engine_api::standardize_groups_command(std::mem::take(&mut self.asset_ptrs));
+    pub fn finalize(&mut self, should_cache: bool) -> () {
+        let response = engine_api::standardize_groups_command(std::mem::take(&mut self.asset_ptrs), should_cache);
+
 
         if response.is_err() {
             println!("{:?}", response.err());

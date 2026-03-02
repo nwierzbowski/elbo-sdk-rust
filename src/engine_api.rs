@@ -6,6 +6,7 @@ use pivot_com_types::OP_GET_SURFACE_TYPES;
 use pivot_com_types::OP_ORGANIZE_OBJECTS;
 use pivot_com_types::OP_SET_SURFACE_TYPES;
 use pivot_com_types::OP_STANDARDIZE_GROUPS;
+use pivot_com_types::OP_STANDARDIZE_OBJECTS;
 use pivot_com_types::OP_STANDARDIZE_SYNCED_GROUPS;
 use pivot_com_types::alloc::AllocRequestMeta;
 use pivot_com_types::asset_meta::AssetMeta;
@@ -119,9 +120,9 @@ pub fn allocate_memory(
     Ok(AssetSyncContext::new(ptrs, asset_ptrs))
 }
 
-pub fn standardize_groups_command(meta_vec: Vec<AssetPtr>) -> Result<EngineResponse, String> {
+pub fn standardize_groups_command(meta_vec: Vec<AssetPtr>, should_cache: bool) -> Result<EngineResponse, String> {
     let mut command = EngineCommand {
-        should_cache: 1,
+        should_cache: should_cache as u16,
         op_id: OP_STANDARDIZE_GROUPS,
         num_headers: meta_vec.len() as u32,
         inline_data: Buffer::new(),
