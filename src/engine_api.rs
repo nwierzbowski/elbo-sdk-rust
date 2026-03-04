@@ -6,7 +6,6 @@ use pivot_com_types::OP_GET_SURFACE_TYPES;
 use pivot_com_types::OP_ORGANIZE_OBJECTS;
 use pivot_com_types::OP_SET_SURFACE_TYPES;
 use pivot_com_types::OP_STANDARDIZE_GROUPS;
-use pivot_com_types::OP_STANDARDIZE_OBJECTS;
 use pivot_com_types::OP_STANDARDIZE_SYNCED_GROUPS;
 use pivot_com_types::alloc::AllocRequestMeta;
 use pivot_com_types::asset_meta::AssetMeta;
