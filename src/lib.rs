@@ -187,6 +187,27 @@ mod elbo_sdk_rust {
     }
 
     #[pyfunction]
+    fn drop_all_groups_command(py: Python) -> () {
+        py.detach(|| {
+            let _ = engine_api::drop_all_groups_command()
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
+        });
+    }
+
+    #[pyfunction]
+    fn export_all_tbo_command(
+        py: Python,
+        path: String,
+        target_bytes: u64,
+        flags: u32,
+    ) -> () {
+        py.detach(|| {
+            let _ = engine_api::export_all_tbo_command(&path, target_bytes, flags)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
+        });
+    }
+
+    #[pyfunction]
     fn import_assets_command(py: Python, paths: Vec<String>) -> () {
         py.detach(|| {
             let _ = engine_api::import_assets_command(paths)

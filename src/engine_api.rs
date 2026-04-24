@@ -192,6 +192,20 @@ pub fn export_tbo_command(
     CLIENT.send_command(command)
 }
 
+pub fn drop_all_groups_command() -> Result<EngineResponse, String> {
+    let command = EngineCommand::drop_all_groups();
+    CLIENT.send_command(command)
+}
+
+pub fn export_all_tbo_command(
+    path: &str,
+    target_bytes: u64,
+    flags: u32,
+) -> Result<EngineResponse, String> {
+    let command = EngineCommand::export_all_tbo(path, target_bytes, flags);
+    CLIENT.send_command(command)
+}
+
 pub fn import_assets_command(paths: Vec<String>) -> Result<EngineResponse, String> {
     let path_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
     let command = EngineCommand::import_assets(&path_refs);
