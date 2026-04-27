@@ -201,8 +201,9 @@ pub fn export_all_tbo_command(
     path: &str,
     target_bytes: u64,
     flags: u32,
+    target_point_count: u32,
 ) -> Result<EngineResponse, String> {
-    let command = EngineCommand::export_all_tbo(path, target_bytes, flags);
+    let command = EngineCommand::export_all_tbo(path, target_bytes, flags, target_point_count);
     CLIENT.send_command(command)
 }
 

@@ -200,9 +200,10 @@ mod elbo_sdk_rust {
         path: String,
         target_bytes: u64,
         flags: u32,
+        target_point_count: u32,
     ) -> () {
         py.detach(|| {
-            let _ = engine_api::export_all_tbo_command(&path, target_bytes, flags)
+            let _ = engine_api::export_all_tbo_command(&path, target_bytes, flags, target_point_count)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
         });
     }
