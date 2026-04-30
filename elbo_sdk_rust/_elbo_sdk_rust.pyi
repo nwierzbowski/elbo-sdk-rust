@@ -44,6 +44,9 @@ def prepare_standardize_groups(
 def generate_uuid_bytes() -> bytes: ...
 
 
+def get_uuid_size() -> int: ...
+
+
 def get_platform_id() -> str: ...
 
 

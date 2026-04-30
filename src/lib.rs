@@ -147,8 +147,13 @@ mod elbo_sdk_rust {
     }
 
     #[pyfunction]
-    fn generate_uuid_bytes() -> PyResult<[u8; 16]> {
-        Ok(engine_api::generate_uuid_bytes())
+    fn generate_uuid_bytes() -> PyResult<Vec<u8>> {
+        Ok(engine_api::generate_uuid_bytes().to_vec())
+    }
+
+    #[pyfunction]
+    fn get_uuid_size() -> usize {
+        engine_api::get_uuid_size()
     }
 
     #[pyfunction]

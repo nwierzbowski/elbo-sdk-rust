@@ -31,9 +31,17 @@ pub fn stop_engine() -> Result<(), String> {
     Ok(())
 }
 
-pub fn generate_uuid_bytes() -> [u8; 16] {
-    let ptr = ExternalUuid::new_v4().as_bytes().as_ptr() as *const [u8; 16];
-    unsafe { *ptr }
+pub fn get_uuid_size() -> usize {
+    std::mem::size_of::<Uuid>()
+}
+
+pub fn generate_uuid_bytes() -> [u8; Uuid::SIZE] {
+    let mut bytes = [0u8; Uuid::SIZE];
+    let uuid1 = ExternalUuid::new_v4();
+    let uuid2 = ExternalUuid::new_v4();
+    bytes[..16].copy_from_slice(uuid1.as_bytes());
+    bytes[16..].copy_from_slice(uuid2.as_bytes());
+    bytes
 }
 
 pub fn poll_mesh_sync() -> Result<Option<AssetSyncContext>, String> {
