@@ -190,13 +190,27 @@ pub fn export_all_command(path: &str, target_bytes: u64) -> Result<EngineRespons
     CLIENT.send_command(command)
 }
 
-pub fn export_tbo_command(
+pub fn export_mesh_tbo_command(
     path: &str,
     target_bytes: u64,
     flags: u32,
     uuids: Vec<Uuid>,
 ) -> Result<EngineResponse, String> {
-    let command = EngineCommand::export_tbo(path, target_bytes, flags, &uuids);
+    let command = EngineCommand::export_mesh_tbo(path, target_bytes, flags, &uuids);
+    CLIENT.send_command(command)
+}
+
+pub fn export_asset_tbo_command(
+    path: &str,
+    target_bytes: u64,
+    uuids: Vec<Uuid>,
+) -> Result<EngineResponse, String> {
+    let command = EngineCommand::export_asset_tbo(path, target_bytes, &uuids);
+    CLIENT.send_command(command)
+}
+
+pub fn export_all_asset_tbo_command(path: &str, target_bytes: u64) -> Result<EngineResponse, String> {
+    let command = EngineCommand::export_all_asset_tbo(path, target_bytes);
     CLIENT.send_command(command)
 }
 
@@ -221,7 +235,7 @@ pub fn import_assets_command(paths: Vec<String>) -> Result<EngineResponse, Strin
     CLIENT.send_command(command)
 }
 
-pub fn tbo_config_command(channel_mask: u32, target_point_count: u32) -> Result<EngineResponse, String> {
+  pub fn tbo_config_command(channel_mask: u32, target_point_count: u32) -> Result<EngineResponse, String> {
     let command = EngineCommand::tbo_config(channel_mask, target_point_count);
     CLIENT.send_command(command)
 }

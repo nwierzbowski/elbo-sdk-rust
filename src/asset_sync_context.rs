@@ -70,12 +70,13 @@ impl AssetSyncContext {
         Py<PyAny>,
         Py<PyAny>,
         Py<PyAny>,
+        Py<PyAny>,
     )> {
         let g = self.asset_slices.get(i).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyIndexError, _>(format!("index {} out of range", i))
         })?;
 
-        // Tuple order: (obj_uuids, verts, edges, loops, loop_bases, object_loop_counts, transforms, vert_counts, edge_counts, object_names)
+        // Tuple order: (obj_uuids, verts, edges, loops, loop_bases, object_loop_counts, transforms, vert_counts, edge_counts, object_names, embeddings)
         let obj_uuids = memoryview_from_slice(py, g.0)?;
         let verts = memoryview_from_slice(py, g.1)?;
         let edges = memoryview_from_slice(py, g.2)?;
@@ -86,6 +87,7 @@ impl AssetSyncContext {
         let vert_counts = memoryview_from_slice(py, g.7)?;
         let edge_counts = memoryview_from_slice(py, g.8)?;
         let object_names = memoryview_from_slice(py, g.9)?;
+        let embeddings = memoryview_from_slice(py, g.10)?;
 
         Ok((
             verts,
@@ -98,6 +100,7 @@ impl AssetSyncContext {
             edge_counts,
             object_names,
             obj_uuids,
+            embeddings,
         ))
     }
 

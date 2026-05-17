@@ -180,7 +180,7 @@ mod elbo_sdk_rust {
     }
 
     #[pyfunction]
-    fn export_tbo_command(
+    fn export_mesh_tbo_command(
         py: Python,
         path: String,
         target_bytes: u64,
@@ -188,9 +188,37 @@ mod elbo_sdk_rust {
         uuids: Vec<Uuid>,
     ) -> () {
         py.detach(|| {
-            let _ = engine_api::export_tbo_command(&path, target_bytes, flags, uuids)
+            let _ = engine_api::export_mesh_tbo_command(&path, target_bytes, flags, uuids)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
         });
+    }
+
+    #[pyfunction]
+    fn export_asset_tbo_command(
+        py: Python,
+        path: String,
+        target_bytes: u64,
+        uuids: Vec<Uuid>,
+    ) -> () {
+        py.detach(|| {
+            let _ = engine_api::export_asset_tbo_command(&path, target_bytes, uuids)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
+        });
+    }
+
+    #[pyfunction]
+    fn export_all_asset_tbo_command(
+        path: String,
+        target_bytes: u64,
+    ) -> PyResult<Vec<String>> {
+        let resp = engine_api::export_all_asset_tbo_command(&path, target_bytes)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))?;
+        let filenames = resp.read_tbo_flush()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                format!("Failed to read flush response: {}", e),
+            ))?;
+        let result: Vec<String> = filenames.into_iter().map(|s| s.to_string()).collect();
+        Ok(result)
     }
 
     #[pyfunction]
