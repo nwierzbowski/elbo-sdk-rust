@@ -189,7 +189,7 @@ impl TboExportContext {
         self.pending_downsample.push(uuid_bytes.clone());
         self.pending_drop.push(uuid_bytes);
 
-         // Check if batch is full
+        // Check if batch is full - downsample immediately to avoid buffer overflow
         if self.pending_downsample.len() >= self.batch_size {
             return self.flush_pending();
         }
@@ -329,6 +329,7 @@ impl TboExportContext {
     fn flush(&mut self) -> PyResult<Vec<String>> {
         match &self.export_mode {
             TboExportMode::Points => {
+                self.flush_pending()?;
                 let batch_offset = self.next_batch_number;
                 match engine_api::tbo_flush_command(&self.output_dir, self.target_bytes, batch_offset) {
                     Ok(resp) => {
@@ -341,6 +342,11 @@ impl TboExportContext {
                         self.next_batch_number += result.len() as u32;
                         // Reset accumulated count so needs_flush works correctly for next batch
                         self.accumulated_count = 0;
+                        // Drop all groups from scene graph to clear memory
+                        engine_api::drop_all_groups_command()
+                            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                                format!("drop_all_groups failed: {}", e),
+                            ))?;
                         Ok(result)
                     }
                     Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
@@ -357,6 +363,11 @@ impl TboExportContext {
                             ))?;
                         let result: Vec<String> = filenames.into_iter().map(|s| s.to_string()).collect();
                         self.accumulated_count = 0;
+                        // Drop all groups from scene graph to clear memory
+                        engine_api::drop_all_groups_command()
+                            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                                format!("drop_all_groups failed: {}", e),
+                            ))?;
                         Ok(result)
                     }
                     Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
