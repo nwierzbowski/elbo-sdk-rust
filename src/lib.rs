@@ -264,4 +264,12 @@ mod elbo_sdk_rust {
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
         });
     }
+
+    #[pyfunction]
+    fn embed_all_assets_command(py: Python) -> () {
+        py.detach(|| {
+            let _ = engine_api::embed_all_assets_command()
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
+        });
+    }
 }

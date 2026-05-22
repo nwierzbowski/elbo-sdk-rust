@@ -331,3 +331,8 @@ pub fn group_all_objects_command() -> Result<EngineResponse, String> {
     let command = EngineCommand::group_all_objects();
     CLIENT.send_command(command)
 }
+
+pub fn embed_all_assets_command() -> Result<EngineResponse, String> {
+    let command = EngineCommand::embed_all_assets(0);
+    CLIENT.send_command(command)
+}
