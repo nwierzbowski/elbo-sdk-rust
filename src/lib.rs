@@ -19,18 +19,14 @@ mod elbo_sdk_rust {
 
     #[pyfunction]
     fn start_engine(py: Python) -> PyResult<()> {
-        py.detach(|| {
-            engine_api::start_engine()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
-        })
+        engine_api::start_engine()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
     #[pyfunction]
     fn stop_engine(py: Python) -> PyResult<()> {
-        py.detach(|| {
-            engine_api::stop_engine()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
-        })
+        engine_api::stop_engine()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
     #[pyfunction]
@@ -39,10 +35,8 @@ mod elbo_sdk_rust {
         uuids: Vec<Uuid>,
         surface_contexts: Vec<u32>,
     ) -> () {
-        py.detach(|| {
-            let _ = engine_api::standardize_synced_groups_command(uuids, surface_contexts)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::standardize_synced_groups_command(uuids, surface_contexts)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -50,42 +44,32 @@ mod elbo_sdk_rust {
         py: Python,
         group_surface_map: std::collections::HashMap<Uuid, i64>,
     ) -> () {
-        py.detach(|| {
-            let _ = engine_api::set_surface_types_command(group_surface_map)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::set_surface_types_command(group_surface_map)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn drop_groups_command(py: Python, uuids: Vec<Uuid>) -> () {
-        py.detach(|| {
-            let _ = engine_api::drop_groups_command(uuids)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::drop_groups_command(uuids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn get_surface_types_command(py: Python) -> () {
-        py.detach(|| {
-            let _ = engine_api::get_surface_types_command()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::get_surface_types_command()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn organize_objects_command(py: Python) -> () {
-        py.detach(|| {
-            let _ = engine_api::organize_objects_command()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::organize_objects_command()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn extract_geometric_features_command(py: Python, uuids: Vec<Uuid>) -> () {
-        py.detach(|| {
-            let _ = engine_api::extract_geometric_features_command(uuids)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::extract_geometric_features_command(uuids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -142,10 +126,8 @@ mod elbo_sdk_rust {
 
     #[pyfunction]
     fn standardize_groups_command(py: Python, uuids: Vec<Uuid>) -> () {
-        py.detach(|| {
-            let _ = engine_api::standardize_groups_command(uuids)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::standardize_groups_command(uuids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -165,18 +147,14 @@ mod elbo_sdk_rust {
         target_bytes: u64,
         uuids: Vec<Uuid>,
     ) -> () {
-        py.detach(|| {
-            let _ = engine_api::export_assets_command(&path, target_bytes, uuids)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::export_assets_command(&path, target_bytes, uuids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn export_all_command(py: Python, path: String, target_bytes: u64) -> () {
-        py.detach(|| {
-            let _ = engine_api::export_all_command(&path, target_bytes)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::export_all_command(&path, target_bytes)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -187,10 +165,8 @@ mod elbo_sdk_rust {
         flags: u32,
         uuids: Vec<Uuid>,
     ) -> () {
-        py.detach(|| {
-            let _ = engine_api::export_mesh_tbo_command(&path, target_bytes, flags, uuids)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::export_mesh_tbo_command(&path, target_bytes, flags, uuids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -200,10 +176,8 @@ mod elbo_sdk_rust {
         target_bytes: u64,
         uuids: Vec<Uuid>,
     ) -> () {
-        py.detach(|| {
-            let _ = engine_api::export_asset_tbo_command(&path, target_bytes, uuids)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::export_asset_tbo_command(&path, target_bytes, uuids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -223,10 +197,8 @@ mod elbo_sdk_rust {
 
     #[pyfunction]
     fn drop_all_groups_command(py: Python) -> () {
-        py.detach(|| {
-            let _ = engine_api::drop_all_groups_command()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::drop_all_groups_command()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
@@ -237,18 +209,14 @@ mod elbo_sdk_rust {
         flags: u32,
         target_point_count: u32,
     ) -> () {
-        py.detach(|| {
-            let _ = engine_api::export_all_tbo_command(&path, target_bytes, flags, target_point_count)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::export_all_tbo_command(&path, target_bytes, flags, target_point_count)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn import_assets_command(py: Python, paths: Vec<String>) -> () {
-        py.detach(|| {
-            let _ = engine_api::import_assets_command(paths)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::import_assets_command(paths)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pymodule_init]
@@ -259,17 +227,13 @@ mod elbo_sdk_rust {
 
     #[pyfunction]
     fn group_all_objects_command(py: Python) -> () {
-        py.detach(|| {
-            let _ = engine_api::group_all_objects_command()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::group_all_objects_command()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 
     #[pyfunction]
     fn embed_all_assets_command(py: Python) -> () {
-        py.detach(|| {
-            let _ = engine_api::embed_all_assets_command()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
-        });
+        engine_api::embed_all_assets_command()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()));
     }
 }
